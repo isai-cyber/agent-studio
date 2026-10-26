@@ -1,0 +1,186 @@
+id: soporte-al-cliente
+name: Soporte al cliente
+icon: 🎧
+category:
+  function: Servicio al Cliente
+  useCase: Resolución de problemas
+description: "Pedidos, envíos, reembolsos, facturas, cuenta y pagos: 27 intenciones de Bitext con respuestas modelo."
+language: español
+instructions: |-
+  Eres el agente de atención al cliente de una tienda online. Resuelves dudas sobre pedidos, envíos, cancelaciones, reembolsos, facturas, métodos de pago, cuenta y suscripciones. Usa las respuestas modelo de la base de conocimiento adaptándolas al cliente; si faltan datos (número de pedido, correo…), pídelos. Nunca pidas contraseñas ni datos completos de tarjeta.
+  Reglas:
+  - Responde en el idioma del usuario (por defecto, español), breve y claro.
+  - Pide un dato cada vez. Si el usuario ya lo dio, no lo vuelvas a pedir.
+  - Antes de confirmar una reserva o compra, resume los datos y pide confirmación.
+  - No inventes disponibilidad, precios ni números de reserva: si no tienes el dato, dilo.
+  - Usa la base de conocimiento: el esquema de datos y las conversaciones de ejemplo muestran cómo resolver cada caso.
+greeting: ¡Hola! Soy el asistente de atención al cliente. ¿En qué te ayudo?
+topics:
+  - name: Seguir pedido
+    description: Saber dónde está un pedido
+    triggers:
+      - dónde está mi pedido
+      - seguir mi pedido
+      - estado del pedido
+      - track my order
+      - where is my order
+      - checking order status
+      - order 00123842current status
+      - track order
+      - tracking order
+      - i want help to track purchase00123842
+      - I want to see the ETA of my order, could you help me?
+      - help seeing the ETA of the purchase00123842
+      - i dont know how i can check the eta of my last delivery
+    steps:
+      - type: question
+        prompt: ¿Cuál es tu número de pedido?
+        variable: pedido
+      - type: generate
+        prompt: El cliente quiere saber el estado del pedido {{pedido}}. Explica cómo seguirlo según la base de conocimiento y ofrece ayuda.
+  - name: Cancelar pedido
+    description: Cancelar una compra
+    triggers:
+      - cancelar mi pedido
+      - quiero cancelar una compra
+      - cancel my order
+      - I cannot pay for the last purchase I have made, cancel it
+      - help me to cancel my last goddamn purchase
+      - cancelling order
+      - would you give me information about cancelling orders?
+      - I purchased some item, help canceling one of the orders
+      - assistance canceling the last order
+      - I cannot afford my last item, how can I cancel the order?
+      - help cancelling my bloody purchase
+    steps:
+      - type: question
+        prompt: ¿Cuál es el número del pedido que quieres cancelar?
+        variable: pedido
+      - type: question
+        prompt: ¿Confirmas la cancelación del pedido {{pedido}}?
+        variable: confirma
+        options:
+          - Sí
+          - No
+      - type: condition
+        if: confirma == "Sí"
+        then:
+          - type: message
+            text: "Listo: he solicitado la cancelación del pedido {{pedido}}. Recibirás un correo de confirmación."
+        else:
+          - type: message
+            text: De acuerdo, no cancelo nada. ¿Te ayudo con otra cosa?
+  - name: Cambiar dirección de envío
+    description: Modificar la dirección de un pedido
+    triggers:
+      - cambiar la dirección de envío
+      - me equivoqué de dirección
+      - change my shipping address
+      - give me information about a delivery address modification
+      - need to update my address
+      - I entered a wrong address, update it
+      - i have an trouble editing the address
+      - help modifying the shipping address
+      - can you help me correct my delivery address?
+      - i have troubles editing my delivery address
+      - I want to modify my delivery address
+    steps:
+      - type: question
+        prompt: ¿Número de pedido?
+        variable: pedido
+      - type: question
+        prompt: ¿Cuál es la nueva dirección completa?
+        variable: direccion
+      - type: message
+        text: "He registrado la nueva dirección para el pedido {{pedido}}: {{direccion}}. Si el pedido ya salió, te avisaremos de las opciones."
+  - name: Reembolso
+    description: Solicitar o consultar un reembolso
+    triggers:
+      - quiero un reembolso
+      - devolución del dinero
+      - dónde está mi reembolso
+      - I want a refund
+      - how do I get a compensation of my money?
+      - i do not know what i have to do to get my money back
+      - I want assistace to request a compensation of my money
+      - I would like to request a damn refund of money
+      - I want assistance obtaining a reimbursement of my money
+      - I need help asking for a restitution of my money
+      - i do not know what i need to do to get refunds of money
+      - is it possible to request rteimbursements
+      - can I see if there is anything new on the reimbursement?
+      - how to know if there are any updates on my reimbursement?
+      - I don't know what to do to check the status of my rebate
+      - i cannot check if there is anything new on the reimbursement
+      - I have to see the current status of my reimbursement
+      - I need assistance checking the status of my rebate
+      - I do not know how I can track my rebate
+      - how to see if there is anything wrong with my compensation
+    steps:
+      - type: question
+        prompt: ¿Número de pedido?
+        variable: pedido
+      - type: question
+        prompt: ¿Cuál es el motivo?
+        variable: motivo
+        options:
+          - Producto defectuoso
+          - No llegó
+          - No es lo que pedí
+          - Otro
+      - type: generate
+        prompt: El cliente pide reembolso del pedido {{pedido}} por "{{motivo}}". Explica los pasos y plazos según la política de reembolsos de la base de conocimiento.
+  - name: Hablar con una persona
+    description: Escalar a un agente humano
+    triggers:
+      - hablar con una persona
+      - agente humano
+      - quiero hablar con alguien
+      - talk to a human
+      - I do not understand you, help me chatting with someone
+      - can I talk to a person?
+      - I can't speak with a live agent
+      - how do i contact someone
+      - can ya help me contactsomebody
+      - can i contact someone
+      - i canttalk to a human agent
+      - transfer to me an agent
+    steps:
+      - type: question
+        prompt: Claro. Cuéntame en una frase el motivo para pasárselo al equipo.
+        variable: motivo
+      - type: message
+        text: 'Te paso con una persona del equipo con este resumen: "{{motivo}}". Te contactarán lo antes posible.'
+  - name: Queja
+    description: Registrar una queja o reclamación
+    triggers:
+      - quiero poner una queja
+      - presentar una reclamación
+      - file a complaint
+      - help me to file a claim
+      - where can i make a consumer claim against ur organization
+      - want help to make a consumer complaint against ur company
+      - I'm not happy with ur service need help to file a complaint
+      - help to make a complaint
+      - I call to makle a customer claim against your business
+      - I would like to make a bloody complaint, could you help me?
+      - i need hepl to lodge a consumer reclamation
+    steps:
+      - type: question
+        prompt: Siento lo ocurrido. ¿Qué ha pasado?
+        variable: queja
+      - type: question
+        prompt: ¿Un correo o teléfono para darte respuesta?
+        variable: contacto
+      - type: message
+        text: He registrado tu queja y te responderemos en {{contacto}}. Gracias por avisarnos.
+knowledge:
+  - type: file
+    name: respuestas por intencion
+    path: knowledge/respuestas-por-intencion.md
+  - type: file
+    name: fuentes
+    path: knowledge/fuentes.md
+voice:
+  enabled: true
+source: dataset

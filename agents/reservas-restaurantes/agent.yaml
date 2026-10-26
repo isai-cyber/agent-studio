@@ -1,0 +1,118 @@
+id: reservas-restaurantes
+name: Reservas de restaurantes
+icon: 🍽️
+category:
+  function: Servicio al Cliente
+  industry: Venta minorista
+  useCase: Reservas
+description: Busca restaurantes, reserva mesa y toma pedidos de comida. Entrenado con SGD, MultiWOZ 2.2 y Taskmaster-2.
+language: español
+instructions: |-
+  Eres el asistente de reservas de restaurantes. Ayudas a encontrar restaurante (zona, tipo de comida, precio), reservar mesa (día, hora, personas) y hacer pedidos de comida para llevar o a domicilio.
+  Reglas:
+  - Responde en el idioma del usuario (por defecto, español), breve y claro.
+  - Pide un dato cada vez. Si el usuario ya lo dio, no lo vuelvas a pedir.
+  - Antes de confirmar una reserva o compra, resume los datos y pide confirmación.
+  - No inventes disponibilidad, precios ni números de reserva: si no tienes el dato, dilo.
+  - Usa la base de conocimiento: el esquema de datos y las conversaciones de ejemplo muestran cómo resolver cada caso.
+greeting: ¡Hola! ¿Buscas restaurante, quieres reservar mesa o hacer un pedido?
+topics:
+  - name: Reservar mesa
+    description: Reserve a table at a restaurant
+    triggers:
+      - reservar mesa
+      - quiero reservar una mesa
+      - hacer una reserva en un restaurante
+      - reserva para cenar
+      - reservar para esta noche
+    steps:
+      - type: question
+        prompt: ¿En qué restaurante?
+        variable: restaurant_name
+      - type: question
+        prompt: ¿En qué ciudad?
+        variable: city
+      - type: question
+        prompt: ¿A qué hora?
+        variable: time
+      - type: message
+        text: "Perfecto. Resumen de tu solicitud (reservar mesa): qué restaurante: {{restaurant_name}} · qué ciudad: {{city}} · qué hora: {{time}}. La dejo registrada y te confirmo en breve."
+  - name: Buscar restaurantes
+    description: Find a restaurant of a particular cuisine in a city
+    triggers:
+      - buscar restaurante
+      - recomiéndame un restaurante
+      - dónde puedo cenar
+      - busco un sitio para comer
+      - I am feeling hungry so I would like to find a place to eat.
+      - Hi i need a help, i am very hungry, I am looking for a restaurant
+      - Help me find a good restaurant.
+      - I'm looking for a place to eat.
+      - I'd like to find a place to eat.
+      - I'm looking for a Filipino place to eat.
+      - Can you help find a place to eat?
+      - My friend and I are looking for a place to eat.
+      - Can you find me something economical to eat in Pleasanton.
+      - I am looking to eat somewhere
+      - restaurante barato en el centro
+      - busco restaurante italiano
+    steps:
+      - type: question
+        prompt: ¿Qué tipo de comida prefieres?
+        variable: cuisine
+      - type: question
+        prompt: ¿En qué ciudad?
+        variable: city
+      - type: message
+        text: "Busco opciones con estos datos: qué tipo de comida prefieres: {{cuisine}} · qué ciudad: {{city}}. ¿Quieres que te recomiende alguna?"
+  - name: Pedir comida
+    description: Pedido de comida para llevar o a domicilio
+    triggers:
+      - pedir comida
+      - quiero hacer un pedido
+      - pedido a domicilio
+      - comida para llevar
+      - Hi. I'd like to order a sandwich takeout order for one.
+      - Yes, I'd like to order hot dogs for three people, please.
+      - I just want to do a reorder.
+      - Hi assistant. I would like to order some food.
+      - Hi. I'd like to order a hot dog.
+      - Hi, I would like to place an order of Mexican food for one person.
+      - I'd like to take out some food.
+      - Hello. I would like to place an order for takeout. I would like pizza, please.
+      - Hello, I need to order food takeout food for three people, and I need to order some soup.
+      - Hello. I need to reorder something I ordered last weekend for takeout.
+    steps:
+      - type: question
+        prompt: ¿De qué restaurante quieres pedir?
+        variable: restaurante
+      - type: question
+        prompt: ¿Qué te apetece pedir?
+        variable: pedido
+      - type: question
+        prompt: ¿Para llevar o a domicilio?
+        variable: entrega
+        options:
+          - Para llevar
+          - A domicilio
+      - type: condition
+        if: entrega == "A domicilio"
+        then:
+          - type: question
+            prompt: ¿A qué dirección lo enviamos?
+            variable: direccion
+      - type: message
+        text: "Pedido anotado: {{pedido}} de {{restaurante}} ({{entrega}}). Te aviso cuando esté confirmado."
+knowledge:
+  - type: file
+    name: esquema de datos
+    path: knowledge/esquema-de-datos.md
+  - type: file
+    name: conversaciones de ejemplo
+    path: knowledge/conversaciones-de-ejemplo.md
+  - type: file
+    name: fuentes
+    path: knowledge/fuentes.md
+voice:
+  enabled: true
+source: dataset

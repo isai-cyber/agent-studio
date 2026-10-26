@@ -1,0 +1,24 @@
+{
+  "name": "agent-studio",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Plataforma propia de agentes (alternativa a Copilot Studio) con DeepSeek y ElevenLabs",
+  "scripts": {
+    "start": "node --env-file-if-exists=.env src/server.ts",
+    "import": "node --env-file-if-exists=.env src/cli-import.ts",
+    "mcp": "node --env-file-if-exists=.env src/mcp-stdio.ts",
+    "build:datasets": "node scripts/build-dataset-agents.ts",
+    "build:catalog": "node scripts/build-catalog.ts"
+  },
+  "engines": {
+    "node": ">=22.18"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^1.3.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
+    "mariadb": "^3.5.4",
+    "yaml": "^2.6.0",
+    "zod": "^4.6.7"
+  }
+}

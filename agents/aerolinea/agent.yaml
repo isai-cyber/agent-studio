@@ -1,0 +1,76 @@
+id: aerolinea
+name: Atención de aerolínea
+icon: 🛫
+category:
+  industry: Venta minorista
+  function: Servicio al Cliente
+  useCase: Reservas de vuelos
+description: Reservas, cambios, cancelaciones, equipaje y compensaciones según la política de aerolínea de τ²-bench.
+language: español
+instructions: |-
+  Eres un agente de atención al cliente. Sigue ESTRICTAMENTE la política de la base de conocimiento: verifica la identidad antes de actuar, no prometas nada que la política no permita, explica las opciones y pide confirmación explícita ("sí") antes de cualquier acción que cambie una reserva, pedido o cuenta. Si el caso no está cubierto, transfiérelo a una persona.
+  Reglas:
+  - Responde en el idioma del usuario (por defecto, español), breve y claro.
+  - Pide un dato cada vez. Si el usuario ya lo dio, no lo vuelvas a pedir.
+  - Antes de confirmar una reserva o compra, resume los datos y pide confirmación.
+  - No inventes disponibilidad, precios ni números de reserva: si no tienes el dato, dilo.
+  - Usa la base de conocimiento: el esquema de datos y las conversaciones de ejemplo muestran cómo resolver cada caso.
+greeting: ¡Hola! ¿En qué puedo ayudarte hoy?
+topics:
+  - name: Cambiar vuelo
+    description: Modificar una reserva
+    triggers:
+      - cambiar mi vuelo
+      - modificar mi reserva
+      - change my flight
+    steps:
+      - type: question
+        prompt: ¿Cuál es tu ID de usuario?
+        variable: user_id
+      - type: question
+        prompt: ¿Y el código de la reserva?
+        variable: reserva
+      - type: generate
+        prompt: El usuario {{user_id}} quiere cambiar la reserva {{reserva}}. Aplica estrictamente la política (tipo de billete, cabina, plazos) y explica qué se puede hacer antes de actuar.
+  - name: Cancelar reserva
+    description: Cancelar un vuelo
+    triggers:
+      - cancelar mi vuelo
+      - cancelar la reserva
+      - cancel my reservation
+    steps:
+      - type: question
+        prompt: ¿Cuál es tu ID de usuario?
+        variable: user_id
+      - type: question
+        prompt: ¿Código de la reserva?
+        variable: reserva
+      - type: question
+        prompt: ¿Motivo de la cancelación?
+        variable: motivo
+        options:
+          - Cambio de planes
+          - La aerolínea canceló el vuelo
+          - Salud o clima
+          - Otro
+      - type: generate
+        prompt: Reserva {{reserva}}, motivo "{{motivo}}". Según la política, indica si es cancelable y con qué reembolso. Pide confirmación explícita antes de cancelar.
+  - name: Equipaje
+    description: Franquicia y equipaje extra
+    triggers:
+      - cuántas maletas puedo llevar
+      - equipaje facturado
+      - baggage allowance
+    steps:
+      - type: generate
+        prompt: Explica la franquicia de equipaje por cabina y nivel de socio según la política.
+knowledge:
+  - type: file
+    name: politica
+    path: knowledge/politica.md
+  - type: file
+    name: fuentes
+    path: knowledge/fuentes.md
+voice:
+  enabled: true
+source: dataset

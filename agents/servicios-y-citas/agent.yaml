@@ -1,0 +1,189 @@
+id: servicios-y-citas
+name: Citas, banca y agenda
+icon: 📅
+category:
+  function: Oficinas ejecutivas
+  industry: Servicios financieros
+  useCase: Citas y gestiones
+description: Citas (peluquería, médico, dentista), banca y pagos, calendario, alarmas y visitas a viviendas. Entrenado con SGD.
+language: español
+instructions: |-
+  Eres un asistente personal. Gestionas citas con profesionales, consultas de saldo, transferencias y pagos, eventos del calendario, alarmas y visitas a viviendas. Nunca pidas contraseñas, PIN ni códigos de verificación.
+  Reglas:
+  - Responde en el idioma del usuario (por defecto, español), breve y claro.
+  - Pide un dato cada vez. Si el usuario ya lo dio, no lo vuelvas a pedir.
+  - Antes de confirmar una reserva o compra, resume los datos y pide confirmación.
+  - No inventes disponibilidad, precios ni números de reserva: si no tienes el dato, dilo.
+  - Usa la base de conocimiento: el esquema de datos y las conversaciones de ejemplo muestran cómo resolver cada caso.
+greeting: ¡Hola! ¿Quieres pedir una cita, hacer una gestión bancaria o organizar tu agenda?
+topics:
+  - name: Consultar saldo
+    description: Check the amount of money in a user's bank account
+    triggers:
+      - consultar saldo
+      - cuánto dinero tengo
+    steps:
+      - type: question
+        prompt: ¿Qué tipo de cuenta (corriente o ahorro)?
+        variable: account_type
+        options:
+          - checking
+          - savings
+      - type: message
+        text: "Busco opciones con estos datos: qué tipo de cuenta (corriente o ahorro): {{account_type}}. ¿Quieres que te recomiende alguna?"
+  - name: Transferir dinero
+    description: Transfer money from one bank account to another user's account
+    triggers:
+      - hacer una transferencia
+      - enviar dinero
+    steps:
+      - type: question
+        prompt: ¿Qué tipo de cuenta (corriente o ahorro)?
+        variable: account_type
+        options:
+          - checking
+          - savings
+      - type: question
+        prompt: ¿Qué importe?
+        variable: amount
+      - type: question
+        prompt: ¿A quién se lo envías?
+        variable: recipient_account_name
+      - type: message
+        text: "Perfecto. Resumen de tu solicitud (transferir dinero): qué tipo de cuenta (corriente o ahorro): {{account_type}} · qué importe: {{amount}} · quién se lo envías: {{recipient_account_name}}. La dejo registrada y te confirmo en breve."
+  - name: Ver eventos del calendario
+    description: Get list of all calendar events for the user on a given day
+    triggers: []
+    steps:
+      - type: question
+        prompt: ¿Para qué fecha?
+        variable: event_date
+      - type: message
+        text: "Busco opciones con estos datos: qué fecha: {{event_date}}. ¿Quieres que te recomiende alguna?"
+  - name: Ver huecos libres
+    description: Get a list of available times for the user on a given day
+    triggers: []
+    steps:
+      - type: question
+        prompt: ¿Para qué fecha?
+        variable: event_date
+      - type: message
+        text: "Busco opciones con estos datos: qué fecha: {{event_date}}. ¿Quieres que te recomiende alguna?"
+  - name: Añadir al calendario
+    description: Add event to the user's calendar
+    triggers:
+      - añadir evento al calendario
+    steps:
+      - type: question
+        prompt: ¿Qué evento?
+        variable: event_name
+      - type: question
+        prompt: ¿Para qué fecha?
+        variable: event_date
+      - type: question
+        prompt: ¿Dónde es?
+        variable: event_location
+      - type: question
+        prompt: ¿A qué hora?
+        variable: event_time
+      - type: message
+        text: "Perfecto. Resumen de tu solicitud (añadir al calendario): qué evento: {{event_name}} · qué fecha: {{event_date}} · dónde es: {{event_location}} · qué hora: {{event_time}}. La dejo registrada y te confirmo en breve."
+  - name: Buscar piso
+    description: Find an apartment in a city for a given number of bedrooms
+    triggers: []
+    steps:
+      - type: question
+        prompt: ¿En qué zona?
+        variable: area
+      - type: question
+        prompt: ¿Cuántas habitaciones?
+        variable: number_of_beds
+        options:
+          - "1"
+          - "2"
+          - "3"
+          - "4"
+      - type: message
+        text: "Busco opciones con estos datos: qué zona: {{area}} · cuántas habitaciones: {{number_of_beds}}. ¿Quieres que te recomiende alguna?"
+  - name: Agendar visita
+    description: Schedule a visit for a given property on a particular date
+    triggers: []
+    steps:
+      - type: question
+        prompt: ¿Qué vivienda?
+        variable: property_name
+      - type: question
+        prompt: ¿Qué día quieres visitarla?
+        variable: visit_date
+      - type: message
+        text: "Perfecto. Resumen de tu solicitud (agendar visita): qué vivienda: {{property_name}} · qué día quieres visitarla: {{visit_date}}. La dejo registrada y te confirmo en breve."
+  - name: Pedir cita
+    description: Book an appointment at a hair stylist
+    triggers:
+      - pedir cita
+      - reservar cita
+      - quiero una cita
+    steps:
+      - type: question
+        prompt: ¿Con qué estilista?
+        variable: stylist_name
+      - type: question
+        prompt: ¿A qué hora?
+        variable: appointment_time
+      - type: question
+        prompt: ¿Para qué día quieres la cita?
+        variable: appointment_date
+      - type: message
+        text: "Perfecto. Resumen de tu solicitud (pedir cita): qué estilista: {{stylist_name}} · qué hora: {{appointment_time}} · qué día quieres la cita: {{appointment_date}}. La dejo registrada y te confirmo en breve."
+  - name: Buscar profesional
+    description: Search for a hair stylist by city and optionally other attributes
+    triggers:
+      - buscar dentista
+      - buscar peluquería
+      - buscar médico
+    steps:
+      - type: question
+        prompt: ¿En qué ciudad?
+        variable: city
+      - type: message
+        text: "Busco opciones con estos datos: qué ciudad: {{city}}. ¿Quieres que te recomiende alguna?"
+  - name: find hospital
+    description: search for a medical facility or a doctor
+    triggers:
+      - I'm looking for a hospital, specifically the Addenbrookes Hospital.
+      - Please find for me the location of Addenbrookes Hospital.
+      - I want to find a hospital in town
+      - Could you find me a hospital in town?
+      - I want a hospital in town.
+      - I'm hurt and I need to find a hospital. Oh, and one with an oncology department!
+      - where is the Addenbrookes Hospital?
+      - i am looking for the Addenbrookes Hospital with neurology department
+      - What is the address to the hospital in Cambridge?
+    steps:
+      - type: question
+        prompt: ¿Qué departamento?
+        variable: department
+      - type: message
+        text: "Busco opciones con estos datos: qué departamento: {{department}}. ¿Quieres que te recomiende alguna?"
+  - name: police
+    description: search for police station
+    triggers: []
+    steps:
+      - type: question
+        prompt: ¿Cómo se llama el sitio que buscas?
+        variable: name
+      - type: message
+        text: "Busco opciones con estos datos: cómo se llama el sitio que buscas: {{name}}. ¿Quieres que te recomiende alguna?"
+knowledge:
+  - type: file
+    name: esquema de datos
+    path: knowledge/esquema-de-datos.md
+  - type: file
+    name: conversaciones de ejemplo
+    path: knowledge/conversaciones-de-ejemplo.md
+  - type: file
+    name: fuentes
+    path: knowledge/fuentes.md
+voice:
+  enabled: true
+source: dataset

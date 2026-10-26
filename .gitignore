@@ -1,0 +1,15 @@
+node_modules
+.env
+.claude/
+.DS_Store
+
+# Datos locales: conexiones, flujos, métricas, sesiones, clave de API, datasets descargados
+data/
+
+# Agentes locales que no se publican (de prueba o importados de una cuenta de Copilot Studio)
+agents/agente-en-blanco*/
+agents/atiende-a-clientes-por-telegram/
+agents/sales-lead-engagement-agent/
+
+modules-community/*
+!modules-community/.gitkeep

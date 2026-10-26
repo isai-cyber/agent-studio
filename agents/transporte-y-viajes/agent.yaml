@@ -1,0 +1,319 @@
+id: transporte-y-viajes
+name: Transporte y viajes
+icon: ✈️
+category:
+  function: Operaciones
+  industry: Venta minorista
+  useCase: Viajes
+description: Vuelos, trenes, autobuses, taxis, viajes compartidos y alquiler de coches. Entrenado con SGD, MultiWOZ 2.2 y Taskmaster-2.
+language: español
+instructions: |-
+  Eres el asistente de viajes y transporte. Ayudas a buscar y reservar vuelos, trenes, autobuses, taxis, viajes compartidos y coches de alquiler: origen, destino, fechas, horas y pasajeros.
+  Reglas:
+  - Responde en el idioma del usuario (por defecto, español), breve y claro.
+  - Pide un dato cada vez. Si el usuario ya lo dio, no lo vuelvas a pedir.
+  - Antes de confirmar una reserva o compra, resume los datos y pide confirmación.
+  - No inventes disponibilidad, precios ni números de reserva: si no tienes el dato, dilo.
+  - Usa la base de conocimiento: el esquema de datos y las conversaciones de ejemplo muestran cómo resolver cada caso.
+greeting: ¡Hola! ¿A dónde quieres ir y cuándo?
+topics:
+  - name: Buscar autobús
+    description: Find a bus journey for a given pair of cities
+    triggers:
+      - buscar autobús
+      - bus a otra ciudad
+    steps:
+      - type: question
+        prompt: ¿Desde dónde sales?
+        variable: from_location
+      - type: question
+        prompt: ¿A dónde vas?
+        variable: to_location
+      - type: question
+        prompt: ¿Qué día sales?
+        variable: leaving_date
+      - type: message
+        text: "Busco opciones con estos datos: dónde sales: {{from_location}} · dónde vas: {{to_location}} · qué día sales: {{leaving_date}}. ¿Quieres que te recomiende alguna?"
+  - name: Comprar billete de autobús
+    description: Buy tickets for a bus journey
+    triggers: []
+    steps:
+      - type: question
+        prompt: ¿Desde dónde sales?
+        variable: from_location
+      - type: question
+        prompt: ¿A dónde vas?
+        variable: to_location
+      - type: question
+        prompt: ¿Qué día sales?
+        variable: leaving_date
+      - type: question
+        prompt: ¿A qué hora sales?
+        variable: leaving_time
+      - type: question
+        prompt: ¿Cuántos viajeros?
+        variable: travelers
+        options:
+          - "1"
+          - "2"
+          - "3"
+          - "4"
+          - "5"
+      - type: message
+        text: "Perfecto. Resumen de tu solicitud (comprar billete de autobús): dónde sales: {{from_location}} · dónde vas: {{to_location}} · qué día sales: {{leaving_date}} · qué hora sales: {{leaving_time}} · cuántos viajeros: {{travelers}}. La dejo registrada y te confirmo en breve."
+  - name: Buscar vuelo de ida
+    description: Search for one-way flights to a destination
+    triggers:
+      - buscar vuelo
+      - vuelo de ida
+      - busco un vuelo
+    steps:
+      - type: question
+        prompt: ¿Desde qué ciudad sales?
+        variable: origin_city
+      - type: question
+        prompt: ¿A qué ciudad vas?
+        variable: destination_city
+      - type: question
+        prompt: ¿Qué día sales?
+        variable: departure_date
+      - type: message
+        text: "Busco opciones con estos datos: qué ciudad sales: {{origin_city}} · qué ciudad vas: {{destination_city}} · qué día sales: {{departure_date}}. ¿Quieres que te recomiende alguna?"
+  - name: Buscar vuelo de ida y vuelta
+    description: Search for round-trip flights to a destination
+    triggers:
+      - vuelo de ida y vuelta
+    steps:
+      - type: question
+        prompt: ¿Desde qué ciudad sales?
+        variable: origin_city
+      - type: question
+        prompt: ¿A qué ciudad vas?
+        variable: destination_city
+      - type: question
+        prompt: ¿Qué día sales?
+        variable: departure_date
+      - type: question
+        prompt: ¿Qué día vuelves?
+        variable: return_date
+      - type: message
+        text: "Busco opciones con estos datos: qué ciudad sales: {{origin_city}} · qué ciudad vas: {{destination_city}} · qué día sales: {{departure_date}} · qué día vuelves: {{return_date}}. ¿Quieres que te recomiende alguna?"
+  - name: Reservar vuelo de ida
+    description: Reserve a one-way flight
+    triggers: []
+    steps:
+      - type: question
+        prompt: ¿Desde qué ciudad sales?
+        variable: origin_city
+      - type: question
+        prompt: ¿A qué ciudad vas?
+        variable: destination_city
+      - type: question
+        prompt: ¿Alguna aerolínea preferida?
+        variable: airlines
+        options:
+          - United Airlines
+          - American Airlines
+          - Delta Airlines
+          - Southwest Airlines
+          - Alaska Airlines
+          - British Airways
+          - Air Canada
+          - Air France
+      - type: question
+        prompt: ¿Qué día sales?
+        variable: departure_date
+      - type: message
+        text: "Perfecto. Resumen de tu solicitud (reservar vuelo de ida): qué ciudad sales: {{origin_city}} · qué ciudad vas: {{destination_city}} · alguna aerolínea preferida: {{airlines}} · qué día sales: {{departure_date}}. La dejo registrada y te confirmo en breve."
+  - name: Reservar vuelo de ida y vuelta
+    description: Reserve a round-trip flight
+    triggers: []
+    steps:
+      - type: question
+        prompt: ¿Desde qué ciudad sales?
+        variable: origin_city
+      - type: question
+        prompt: ¿A qué ciudad vas?
+        variable: destination_city
+      - type: question
+        prompt: ¿Alguna aerolínea preferida?
+        variable: airlines
+        options:
+          - United Airlines
+          - American Airlines
+          - Delta Airlines
+          - Southwest Airlines
+          - Alaska Airlines
+          - British Airways
+          - Air Canada
+          - Air France
+      - type: question
+        prompt: ¿Qué día sales?
+        variable: departure_date
+      - type: question
+        prompt: ¿Qué día vuelves?
+        variable: return_date
+      - type: question
+        prompt: ¿A qué hora quieres salir a la ida?
+        variable: outbound_departure_time
+      - type: question
+        prompt: ¿A qué hora quieres salir a la vuelta?
+        variable: inbound_departure_time
+      - type: message
+        text: "Perfecto. Resumen de tu solicitud (reservar vuelo de ida y vuelta): qué ciudad sales: {{origin_city}} · qué ciudad vas: {{destination_city}} · alguna aerolínea preferida: {{airlines}} · qué día sales: {{departure_date}} · qué día vuelves: {{return_date}} · qué hora quieres salir a la ida: {{outbound_departure_time}} · qué hora quieres salir a la vuelta: {{inbound_departure_time}}. La dejo registrada y te confirmo en breve."
+  - name: Buscar coche de alquiler
+    description: Search for available rental cars by city and date
+    triggers:
+      - alquilar un coche
+      - coche de alquiler
+    steps:
+      - type: question
+        prompt: ¿En qué ciudad recoges el coche?
+        variable: pickup_city
+      - type: question
+        prompt: ¿Qué día lo recoges?
+        variable: pickup_date
+      - type: question
+        prompt: ¿A qué hora lo recoges?
+        variable: pickup_time
+      - type: question
+        prompt: ¿Qué día lo devuelves?
+        variable: dropoff_date
+      - type: message
+        text: "Busco opciones con estos datos: qué ciudad recoges el coche: {{pickup_city}} · qué día lo recoges: {{pickup_date}} · qué hora lo recoges: {{pickup_time}} · qué día lo devuelves: {{dropoff_date}}. ¿Quieres que te recomiende alguna?"
+  - name: Reservar coche de alquiler
+    description: Reserve car rental for given dates and location
+    triggers: []
+    steps:
+      - type: question
+        prompt: ¿Dónde lo recoges?
+        variable: pickup_location
+      - type: question
+        prompt: ¿Qué día lo recoges?
+        variable: pickup_date
+      - type: question
+        prompt: ¿A qué hora lo recoges?
+        variable: pickup_time
+      - type: question
+        prompt: ¿Qué día lo devuelves?
+        variable: dropoff_date
+      - type: question
+        prompt: ¿Qué tipo de alojamiento?
+        variable: type
+        options:
+          - Compact
+          - Standard
+          - Full-size
+      - type: message
+        text: "Perfecto. Resumen de tu solicitud (reservar coche de alquiler): dónde lo recoges: {{pickup_location}} · qué día lo recoges: {{pickup_date}} · qué hora lo recoges: {{pickup_time}} · qué día lo devuelves: {{dropoff_date}} · qué tipo de alojamiento: {{type}}. La dejo registrada y te confirmo en breve."
+  - name: Pedir un viaje
+    description: Call a taxi to head to a given destination
+    triggers:
+      - pedir un taxi
+      - necesito un coche que me lleve
+    steps:
+      - type: question
+        prompt: ¿A dónde vas?
+        variable: destination
+      - type: question
+        prompt: ¿Cuántos viajeros?
+        variable: number_of_riders
+        options:
+          - "1"
+          - "2"
+          - "3"
+          - "4"
+      - type: question
+        prompt: ¿Te importa compartir el viaje con otros pasajeros?
+        variable: shared_ride
+        options:
+          - "True"
+          - "False"
+      - type: message
+        text: "Perfecto. Resumen de tu solicitud (pedir un viaje): dónde vas: {{destination}} · cuántos viajeros: {{number_of_riders}} · te importa compartir el viaje con otros pasajeros: {{shared_ride}}. La dejo registrada y te confirmo en breve."
+  - name: Buscar trenes
+    description: search for trains that take you places
+    triggers:
+      - i need a train on tuesday out of kings lynn
+      - Please find me a train from cambridge to stansted airport
+      - Hi, I'd like to book a train to stansted airport from cambridge. Can you help?
+      - I want a restaurant in the north of Cambridge that is within a moderate price range.
+      - Find me a train that leaves on Sunday after 14:00 please
+      - I need to book a train to norwich that arrives by 16:15.
+      - I am looking for a train to Ely.
+      - I need to take a train from bishops stortford to Cambridge. Ill need to leave after 9:00
+      - I'm wanting a train that leaves on Friday and goes to Cambridge.
+      - I need a train to go from Cambridge to Norwich.
+    steps:
+      - type: question
+        prompt: ¿A dónde vas?
+        variable: destination
+      - type: question
+        prompt: ¿A qué hora necesitas llegar?
+        variable: arriveby
+      - type: question
+        prompt: ¿Desde dónde sales?
+        variable: departure
+      - type: message
+        text: "Busco opciones con estos datos: dónde vas: {{destination}} · qué hora necesitas llegar: {{arriveby}} · dónde sales: {{departure}}. ¿Quieres que te recomiende alguna?"
+  - name: Comprar billete de tren
+    description: book train tickets
+    triggers:
+      - Hello, I need to book a train at 07:15 leaving Cambridge going to the town center on Thursday for 7 people.
+    steps:
+      - type: question
+        prompt: ¿A dónde vas?
+        variable: destination
+      - type: question
+        prompt: ¿A qué hora necesitas llegar?
+        variable: arriveby
+      - type: question
+        prompt: ¿Desde dónde sales?
+        variable: departure
+      - type: message
+        text: "Perfecto. Resumen de tu solicitud (comprar billete de tren): dónde vas: {{destination}} · qué hora necesitas llegar: {{arriveby}} · dónde sales: {{departure}}. La dejo registrada y te confirmo en breve."
+  - name: Pedir taxi
+    description: book taxis to travel between places
+    triggers:
+      - pedir taxi
+      - reservar un taxi
+    steps:
+      - type: question
+        prompt: ¿A partir de qué hora quieres salir?
+        variable: leaveat
+      - type: question
+        prompt: ¿A dónde vas?
+        variable: destination
+      - type: question
+        prompt: ¿Desde dónde sales?
+        variable: departure
+      - type: message
+        text: "Perfecto. Resumen de tu solicitud (pedir taxi): partir de qué hora quieres salir: {{leaveat}} · dónde vas: {{destination}} · dónde sales: {{departure}}. La dejo registrada y te confirmo en breve."
+  - name: find bus
+    description: search for a bus
+    triggers: []
+    steps:
+      - type: question
+        prompt: ¿Desde dónde sales?
+        variable: departure
+      - type: question
+        prompt: ¿A dónde vas?
+        variable: destination
+      - type: question
+        prompt: ¿Qué día?
+        variable: day
+      - type: message
+        text: "Busco opciones con estos datos: dónde sales: {{departure}} · dónde vas: {{destination}} · qué día: {{day}}. ¿Quieres que te recomiende alguna?"
+knowledge:
+  - type: file
+    name: esquema de datos
+    path: knowledge/esquema-de-datos.md
+  - type: file
+    name: conversaciones de ejemplo
+    path: knowledge/conversaciones-de-ejemplo.md
+  - type: file
+    name: fuentes
+    path: knowledge/fuentes.md
+voice:
+  enabled: true
+source: dataset

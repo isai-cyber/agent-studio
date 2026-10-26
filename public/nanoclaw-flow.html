@@ -1,0 +1,1496 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>NanoClaw · cómo se procesa un mensaje</title>
+<!-- Solo la fuente es externa; si no carga, se usa la monoespaciada del sistema -->
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" />
+<style>
+  :root {
+    /* Tema claro, a juego con Agent Studio (blanco + índigo) */
+    --bg: #f6f7fb;
+    --bg-2: #ffffff;
+    --panel: rgba(255, 255, 255, 0.95);
+    --line: rgba(28, 33, 66, 0.1);
+    --line-2: rgba(28, 33, 66, 0.18);
+    --ink: #1c2142;
+    --muted: #646a8a;
+    --dim: #9aa0bb;
+
+    /* Nubes (etapas): tonos intensos para que se lean sobre blanco */
+    --c1: #64748b; /* 01 canal */
+    --c2: #0891b2; /* 02 router */
+    --c3: #db2777; /* 03 inbound */
+    --c4: #6d28d9; /* 04 contenedor */
+    --c5: #b45309; /* 05 memoria */
+    --c6: #059669; /* 06 skills + mcp */
+    --c7: #ea580c; /* 07 outbound */
+    --c8: #2563eb; /* 08 entrega */
+
+    /* Criatura y escena */
+    --body: #e9e7ff;
+    --body-hi: #ffffff;
+    --body-lo: #b9b4f5;
+    --body-edge: #4f46e5;
+    --leg: #4338ca;
+    --spine: #6366f1;
+    --core: #4f46e5;
+    --alert: #dc2f45;
+    --container: #4f46e5;
+    --thread: #4f46e5;
+    --gateway: #646a8a;
+    --good: #059669;
+    --sky-top: #ffffff;
+    --sky-bottom: #eef0ff;
+    --grid: #4f46e5;
+    --blend: source-over;
+
+    --font: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--bg); color: var(--ink); font-family: var(--font); }
+  body { display: flex; flex-direction: column; min-height: 100vh; overflow-x: hidden; }
+  button, input, textarea { font-family: inherit; }
+
+  /* ---------- barra superior ---------- */
+  .top {
+    display: flex; align-items: center; gap: 10px 18px; flex-wrap: wrap;
+    padding: 9px 16px; border-bottom: 1px solid var(--line); background: var(--bg-2); font-size: 12px;
+  }
+  .brand { white-space: nowrap; letter-spacing: 0.02em; }
+  .brand .dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--core); margin-right: 8px; box-shadow: 0 0 10px var(--core); vertical-align: 1px; }
+  .brand .sid { color: var(--muted); }
+  .tabs { display: flex; gap: 4px; flex-wrap: wrap; }
+  .tab {
+    --tab-c: var(--ink);
+    position: relative; padding: 5px 8px 6px; font-size: 11px; color: var(--muted); background: transparent;
+    border: 1px solid var(--line); border-radius: 3px; cursor: pointer; letter-spacing: 0.04em;
+  }
+  .tab::after { content: ""; position: absolute; left: 6px; right: 6px; bottom: 2px; height: 2px; border-radius: 2px; background: var(--tab-c); opacity: 0.25; }
+  .tab:hover { color: var(--ink); border-color: var(--line-2); }
+  .tab.active { color: var(--ink); border-color: var(--tab-c); }
+  .tab.active::after { opacity: 1; }
+  .tab:disabled { opacity: 0.35; cursor: not-allowed; }
+  .metrics { margin-left: auto; color: var(--muted); white-space: nowrap; }
+  .metrics b { color: var(--ink); font-weight: 600; }
+
+  /* ---------- escena ---------- */
+  .stage { position: relative; flex: 1; min-height: 440px; overflow: hidden; }
+  canvas { position: absolute; inset: 0; width: 100%; height: 100%; display: block; touch-action: none; cursor: crosshair; }
+  canvas.dragging { cursor: grabbing; }
+  .stage::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: none; }
+  .code {
+    position: absolute; left: 14px; top: 12px; max-width: min(460px, calc(100% - 28px));
+    font-size: 11.5px; color: var(--muted); pointer-events: none; line-height: 1.6;
+  }
+  .code .fn { color: var(--ink); }
+  .code .cursor { display: inline-block; width: 7px; height: 13px; background: var(--ink); vertical-align: -2px; margin-left: 2px; animation: blink 1s steps(1) infinite; }
+  .hint { position: absolute; right: 14px; top: 12px; font-size: 10.5px; color: var(--dim); pointer-events: none; text-align: right; line-height: 1.6; }
+  .caption { position: absolute; left: 50%; bottom: 10px; transform: translateX(-50%); font-size: 11px; color: var(--muted); text-align: center; pointer-events: none; width: min(720px, 92%); }
+  @keyframes blink { 50% { opacity: 0; } }
+  .legend-m { position: absolute; right: 14px; bottom: 10px; font-size: 10px; background: rgba(255,255,255,0.9); padding: 6px 9px; border-radius: 8px; border: 1px solid var(--line); color: var(--muted); line-height: 1.7; text-align: right; pointer-events: none; max-width: 330px; }
+  .legend-m b { color: var(--ink); font-weight: 600; }
+  .legend-m .alert { color: var(--alert); }
+  /* Incrustada en Métricas: sin panel inferior ni pestañas */
+  body.embed .panel, body.embed .hint, body.embed .caption { display: none; }
+  body.embed .stage { min-height: 0; }
+  body.embed .top { padding: 7px 12px; }
+  @media (max-width: 560px) {
+    body.embed .tabs, body.embed .metrics, body.embed .legend-m { display: none !important; }
+    body.embed .code { font-size: 10.5px; }
+  }
+
+  /* ---------- panel inferior ---------- */
+  .panel { display: grid; grid-template-columns: minmax(0, 1.7fr) minmax(0, 1fr) minmax(0, 1fr) minmax(0, 1fr); border-top: 1px solid var(--line); background: var(--panel); }
+  .col { padding: 12px 14px 14px; border-right: 1px solid var(--line); min-width: 0; }
+  .col:last-child { border-right: 0; }
+  .col h4 { margin: 0 0 9px; font-size: 10.5px; letter-spacing: 0.16em; color: var(--muted); font-weight: 600; display: flex; justify-content: space-between; }
+  .col h4 span { letter-spacing: 0.04em; color: var(--dim); font-weight: 400; }
+
+  .log { font-size: 11px; line-height: 1.62; height: 142px; overflow: hidden; }
+  .log div { white-space: pre; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }
+  .log div:last-child { color: var(--ink); }
+  .log .t { color: var(--dim); }
+  .log .w { color: var(--ink); }
+
+  .bars { display: grid; gap: 5px; font-size: 10.5px; }
+  .bar { display: grid; grid-template-columns: 112px 1fr 34px; align-items: center; gap: 8px; color: var(--muted); }
+  .bar.active { color: var(--ink); }
+  .bar > span:first-child { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .bar .track { height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; }
+  .bar .fill { height: 100%; width: 0; border-radius: 2px; background: var(--bar-c); transition: width 0.3s; }
+  .bar .pct { text-align: right; }
+
+  .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 10px; font-size: 11px; color: var(--muted); }
+  .kv b { color: var(--ink); font-weight: 600; text-align: right; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .state-spawn { color: var(--c5) !important; }
+  .state-running { color: var(--good) !important; }
+  .state-idle { color: var(--muted) !important; }
+  .beat { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: var(--dim); margin-right: 6px; vertical-align: 0; transition: background 0.1s, box-shadow 0.1s; }
+  .beat.on { background: var(--core); box-shadow: 0 0 8px var(--core); }
+  .mounts { margin-top: 8px; font-size: 10.5px; color: var(--muted); line-height: 1.6; }
+  .mounts span { color: var(--ink); }
+  .mem { margin-top: 8px; }
+  .mem .track { height: 4px; border-radius: 2px; background: var(--line); overflow: hidden; margin-top: 4px; }
+  .mem .fill { height: 100%; width: 0; background: var(--c5); transition: width 0.3s; }
+  .mem small { font-size: 10.5px; color: var(--muted); }
+
+  .score { display: flex; align-items: baseline; gap: 8px; }
+  .score b { font-size: 44px; line-height: 1; font-weight: 700; letter-spacing: -0.03em; }
+  .score small { font-size: 10.5px; color: var(--muted); }
+  .ctrl { margin-top: 10px; font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+  .ctrl input[type="range"] { flex: 1; min-width: 0; accent-color: var(--core); }
+  .ctrl b { color: var(--ink); width: 22px; text-align: right; }
+  .btns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+  .btn {
+    padding: 6px 9px; font-size: 11px; color: var(--ink); background: transparent; border: 1px solid var(--line-2);
+    border-radius: 3px; cursor: pointer; letter-spacing: 0.02em;
+  }
+  .btn:hover { border-color: var(--ink); }
+  .btn.on { border-color: var(--core); color: var(--core); }
+  .btn.ghost { color: var(--muted); border-color: var(--line); }
+
+  /* ---------- diálogo JSON ---------- */
+  dialog { background: var(--bg-2); color: var(--ink); border: 1px solid var(--line-2); border-radius: 6px; width: min(640px, 94vw); padding: 16px; }
+  dialog::backdrop { background: rgba(0, 0, 0, 0.6); }
+  dialog h3 { margin: 0 0 6px; font-size: 13px; }
+  dialog p { margin: 0 0 10px; font-size: 11px; color: var(--muted); line-height: 1.6; }
+  dialog textarea { width: 100%; height: 240px; background: var(--bg); color: var(--ink); border: 1px solid var(--line-2); border-radius: 4px; padding: 10px; font-size: 11px; resize: vertical; }
+  dialog .row { display: flex; gap: 8px; justify-content: flex-end; margin-top: 10px; align-items: center; }
+  dialog .err { color: var(--alert); font-size: 11px; margin-right: auto; }
+
+  @media (max-width: 860px) {
+    .panel { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
+    .col { border-bottom: 1px solid var(--line); }
+    .col:nth-child(1) { grid-column: 1 / -1; border-right: 0; }
+    .col:nth-child(3) { border-right: 0; }
+    .log { font-size: 10px; height: 128px; }
+    .metrics { margin-left: 0; width: 100%; white-space: normal; }
+    .bar { grid-template-columns: 74px 1fr 30px; }
+    .stage { min-height: 62vh; }
+    .hint { display: none; }
+    .score b { font-size: 36px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .code .cursor { animation: none; }
+    .bar .fill, .mem .fill { transition: none; }
+  }
+</style>
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><span class="dot"></span>nanoclaw · <span class="sid">sesión <span id="sid">——</span></span></div>
+    <nav class="tabs" id="tabs" aria-label="Etapas"></nav>
+    <div class="metrics" id="metrics">turnos <b>0</b> · inbound <b>0</b> · outbound <b>0</b> · reintentos <b>0</b></div>
+  </header>
+
+  <main class="stage" id="stage">
+    <canvas id="cv" aria-label="Visualización del recorrido de un mensaje por NanoClaw"></canvas>
+    <div class="code" id="code"></div>
+    <div class="hint">clic en el suelo: mover al agente<br />arrastrar: girar la cámara</div>
+    <div class="caption" id="caption"></div>
+    <div class="legend-m" id="legend-m" hidden></div>
+  </main>
+
+  <section class="panel">
+    <div class="col">
+      <h4>REGISTRO <span id="logsrc">simulación</span></h4>
+      <div class="log" id="log"></div>
+    </div>
+    <div class="col">
+      <h4>ETAPAS</h4>
+      <div class="bars" id="bars"></div>
+    </div>
+    <div class="col">
+      <h4>CONTENEDOR <span id="cname">ncl-…</span></h4>
+      <div class="kv">
+        estado <b id="cstate" class="state-idle">idle</b>
+        heartbeat <b><span class="beat" id="beat"></span><span id="since">—</span></b>
+      </div>
+      <div class="mounts">
+        <span>/workspace</span> rw<br />
+        <span>/workspace/agent</span> rw<br />
+        <span>/app/skills</span> ro
+      </div>
+      <div class="mem">
+        <small>CLAUDE.md <b id="memsize" style="color: var(--ink)">0 KiB</b> / 4 MiB</small>
+        <div class="track"><div class="fill" id="memfill"></div></div>
+      </div>
+    </div>
+    <div class="col">
+      <h4>TURNO <span id="turnlabel">#0</span></h4>
+      <div class="score"><b id="score">0</b><small>/ 100<br />cobertura media</small></div>
+      <div class="ctrl">patas <input type="range" id="legs" min="6" max="32" value="16" aria-label="Número de patas" /><b id="legsv">16</b></div>
+      <div class="btns">
+        <button class="btn on" id="b-auto">auto</button>
+        <button class="btn" id="b-reset">reiniciar</button>
+        <button class="btn" id="b-new">nuevo mensaje</button>
+      </div>
+      <div class="btns">
+        <button class="btn ghost" id="b-compare">openclaw vs nanoclaw</button>
+        <button class="btn ghost" id="b-json">cargar JSON</button>
+      </div>
+    </div>
+  </section>
+
+  <dialog id="dlg">
+    <h3>Cargar datos reales</h3>
+    <p>Pega un JSON con <code>sesiones</code> y <code>mensajes</code>. Cada vez que el agente procese un concepto, el registro mostrará el siguiente mensaje y las métricas se calcularán con estos datos.</p>
+    <textarea id="json" spellcheck="false"></textarea>
+    <div class="row">
+      <span class="err" id="jerr"></span>
+      <button class="btn ghost" id="j-sim">volver a simulación</button>
+      <button class="btn ghost" id="j-cancel">cancelar</button>
+      <button class="btn on" id="j-load">cargar</button>
+    </div>
+  </dialog>
+
+<script>
+(() => {
+  'use strict';
+
+  // ================= configuración =================
+
+  const css = getComputedStyle(document.documentElement);
+  const V = (n) => css.getPropertyValue(n).trim();
+  const REDUCED = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const MOTION = REDUCED ? 0.45 : 1;
+
+  const POINTS = 200;
+  const STAGE_SECONDS = 6;
+  const SLA_SECONDS = 20;
+  let BEAT = 1.5; // en modo métricas depende de los mensajes por hora
+  const SEGMENTS = 6;
+
+  // u, v: posición en un anillo irregular (−1..1), empezando arriba y en sentido horario.
+  // Las nubes 04–07 quedan juntas abajo para encerrarlas en el rectángulo del contenedor.
+  const STAGES = [
+    { n: '01', name: 'CANAL', c: '--c1', u: 0.02, v: -0.84, words: ['whatsapp', 'telegram', 'slack', 'discord', 'adapter', 'evento', 'normalizar', 'remitente', 'webhook', 'sin credenciales'],
+      table: 'adapter', actions: ['recv', 'normal', 'recv'], states: ['evento', 'evento', 'listo'],
+      code: ['adapter.onMessage(evt)', 'normalize(evt) → msg', 'msg.sender = resolveSender(evt)', 'channel.ack(evt.id)'] },
+    { n: '02', name: 'ROUTER', c: '--c2', u: 0.6, v: -0.6, words: ['router.ts', 'messaging group', 'wiring', 'agent group', 'sesión', 'shared', 'per-thread', 'agent-shared', 'fan-out', 'aprobación'],
+      table: 'router', actions: ['wire', 'resolve', 'fanout'], states: ['shared', 'per-thread', 'agent-shared'],
+      code: ['router.resolveSession(msg)', 'wiring.lookup(messagingGroup)', 'router.fanOut(agentGroups)', 'approvals.check(msg.sender)'] },
+    { n: '03', name: 'INBOUND', c: '--c3', u: 0.94, v: -0.22, words: ['inbound.db', 'fila', 'pending', 'process_after', 'despertar', 'delivered', 'inbox/', 'adjunto', 'journal DELETE', 'un escritor'],
+      table: 'inbound.db', actions: ['INSERT', 'INSERT', 'UPDATE'], states: ['pending', 'pending', 'delivered'],
+      code: ['inbound.insert({ status: "pending" })', 'db.pragma("journal_mode = DELETE")', 'wake(session) // process_after', 'fs.copy(attachment, "inbox/")'] },
+    { n: '04', name: 'CONTENEDOR', c: '--c4', u: 0.62, v: 0.5, words: ['ncl-…', 'docker', '/workspace', '/workspace/agent', 'heartbeat', 'bun', 'poll-loop', 'aislamiento', 'vault', 'SLA'],
+      table: 'container', actions: ['spawn', 'poll', 'beat'], states: ['running', 'running', 'idle'],
+      code: ['docker.run("ncl-" + session.id)', 'pollLoop(inbound, 500ms)', 'heartbeat.touch()', 'mount("/workspace", "rw")'] },
+    { n: '05', name: 'MEMORIA', c: '--c5', u: 0.12, v: 0.8, words: ['CLAUDE.md', 'prepend.md', 'memory/', 'base', 'módulos', '4 MiB', 'PreCompact', 'session id', 'reanudar', 'generado'],
+      table: 'v2.db', actions: ['SELECT', 'read', 'resume'], states: ['session', 'memoria', 'reanudar'],
+      code: ['compose(CLAUDE.md, prepend.md)', 'memory.load("memory/")', 'sdk.resume(sessionId)', 'hooks.on("PreCompact", save)'] },
+    { n: '06', name: 'SKILLS + MCP', c: '--c6', u: -0.42, v: 0.64, words: ['/app/skills', 'symlink', 'send_message', 'ask_user_question', 'create_agent', 'mcp', 'herramienta', 'prosa', 'solo lectura', 'fork'],
+      table: 'container', actions: ['tool', 'call', 'mcp'], states: ['running', 'running', 'running'],
+      code: ['mcp.call("send_message", args)', 'skills.link("/app/skills")', 'tools.ask_user_question(q)', 'agents.create(template)'] },
+    { n: '07', name: 'OUTBOUND', c: '--c7', u: -0.88, v: 0.2, words: ['outbound.db', 'messages_out', '<message to>', 'scratchpad', 'outbox/', 'formatter', 'xml', 'lote', 'respuesta', 'borrador'],
+      table: 'outbound.db', actions: ['INSERT', 'INSERT', 'UPDATE'], states: ['borrador', 'queued', 'queued'],
+      code: ['<message to="telegram:…">', 'outbound.insert(messages_out)', 'formatter.toXml(reply)', 'fs.write("outbox/", file)'] },
+    { n: '08', name: 'ENTREGA', c: '--c8', u: -0.66, v: -0.52, words: ['delivery.ts', 'adapter.deliver', 'permisos', 'reintento', 'backoff', '3 intentos', 'enviado', 'fallido', 'ncl tasks', 'recurrente'],
+      table: 'delivery', actions: ['deliver', 'deliver', 'retry'], states: ['enviado', 'enviado', 'reintento'],
+      code: ['adapter.deliver(msg)', 'retry(backoff, { max: 3 })', 'permissions.assert(channel)', 'ncl tasks schedule --recurring'] },
+  ];
+
+  // Vista comparativa: OpenClaw = un gran Gateway con los canales alrededor
+  const OPENCLAW = [
+    { n: 'GW', name: 'GATEWAY', c: '--gateway', u: 0, v: 0.04, sigmaMul: 2.5, count: 720,
+      words: ['gateway', 'un proceso', 'memoria compartida', 'allowlist', 'pairing', 'plugins', 'cron', 'sesiones', 'canales', 'node', 'config', 'permisos'],
+      table: 'gateway', actions: ['route', 'exec', 'store'], states: ['shared', 'shared', 'shared'],
+      code: ['gateway.handle(evt) // mismo proceso', 'sessions.get(id) // memoria compartida', 'plugins.run(hook)', 'allowlist.check(sender)'] },
+    ...['whatsapp', 'telegram', 'slack', 'discord', 'imessage', 'signal', 'teams', 'email'].map((w, i) => {
+      const a = -Math.PI / 2 + (i / 8) * Math.PI * 2;
+      return { n: 'CH', name: w.toUpperCase(), c: ['--c1', '--c2', '--c3', '--c4', '--c5', '--c6', '--c7', '--c8'][i], u: Math.cos(a) * 0.92, v: Math.sin(a) * 0.86, sigmaMul: 0.45, count: 50,
+        words: [w], table: 'gateway', actions: ['recv'], states: ['evento'], code: [`${w}.onMessage(evt) → gateway`] };
+    }),
+  ];
+
+  // ================= utilidades =================
+
+  const $ = (id) => document.getElementById(id);
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const rand = (a = 1, b) => (b === undefined ? Math.random() * a : a + Math.random() * (b - a));
+  const gauss = () => {
+    let u = 0, v = 0;
+    while (!u) u = Math.random();
+    while (!v) v = Math.random();
+    return Math.sqrt(-2 * Math.log(u)) * Math.cos(2 * Math.PI * v);
+  };
+  const hexA = (hex, a) => {
+    const h = hex.replace('#', '');
+    const n = parseInt(h.length === 3 ? h.split('').map((c) => c + c).join('') : h, 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+  };
+  const shortId = () => Math.random().toString(16).slice(2, 8);
+  const pad = (s, n) => (String(s) + ' '.repeat(n)).slice(0, Math.max(n, String(s).length));
+  const fmtT = (t) => {
+    const m = Math.floor(t / 60), s = t - m * 60;
+    return `${String(m).padStart(2, '0')}:${s.toFixed(1).padStart(4, '0')}`;
+  };
+  const escapeHtml = (s) => String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
+
+  // ================= estado =================
+
+  const cv = $('cv');
+  const ctx = cv.getContext('2d');
+  let W = 0, H = 0, DPR = 1;
+  let mode = 'nano'; // 'nano' | 'open'
+  let clouds = [];
+  let unit = 46; // tamaño base (sigma) en unidades de mundo
+
+  const S = {
+    time: 0,
+    sim: 0,
+    stage: 0,
+    stageTime: 0,
+    lastAdvance: 0,
+    auto: true,
+    pausedUntil: 0,
+    target: null, // {x, z} libre, sobre el suelo
+    turn: 1,
+    inbound: 0,
+    outbound: 0,
+    retries: 0,
+    sid: shortId(),
+    container: { state: 'idle', spawnUntil: 0, spawned: false, lastBeat: -1, beatFlash: 0 },
+    memKiB: 0,
+    log: [],
+    labels: [],
+    code: '',
+    wander: 0,
+    data: null, // { mensajes, i, sesiones }
+    M: null, // métricas reales aplicadas (modo métricas)
+  };
+
+  const creature = { x: 0, y: 0, z: 0, vx: 0, vz: 0, rot: 0, legs: [], r: 10, seg: 10 };
+
+  // ================= mundo 3D =================
+  // La simulación vive en el plano del suelo (x, z) con altura y. Una cámara en
+  // perspectiva (que orbita despacio y se gira arrastrando) proyecta todo al canvas.
+
+  const WORLD = { RX: 520, RZ: 400, UNIT: 62 };
+  const CAM = { yaw: 0, userYaw: -0.12, pitch: 0.92, D: 1700, zoom: 1, ox: 0, oy: 0 };
+  const _p = { x: 0, y: 0, k: 1, d: 0 };
+
+  function projRaw(X, Y, Z, out) {
+    const c = Math.cos(CAM.yaw), s = Math.sin(CAM.yaw);
+    const x1 = X * c - Z * s, z1 = X * s + Z * c;
+    const cp = Math.cos(CAM.pitch), sp = Math.sin(CAM.pitch);
+    const depth = CAM.D - (z1 * sp + Y * cp);
+    const k = CAM.D / Math.max(120, depth);
+    out.x = x1 * k;
+    out.y = (z1 * cp - Y * sp) * k;
+    out.k = k;
+    out.d = depth;
+    return out;
+  }
+  function proj(X, Y, Z, out = { x: 0, y: 0, k: 1, d: 0 }) {
+    projRaw(X, Y, Z, out);
+    out.x = CAM.ox + out.x * CAM.zoom;
+    out.y = CAM.oy + out.y * CAM.zoom;
+    out.k *= CAM.zoom;
+    return out;
+  }
+  // Punto de la pantalla → punto del suelo (y = 0)
+  function unproject(sx, sy) {
+    const a = (sy - CAM.oy) / CAM.zoom;
+    const cp = Math.cos(CAM.pitch), sp = Math.sin(CAM.pitch);
+    const z1 = (a * CAM.D) / (CAM.D * cp + a * sp);
+    const k = CAM.D / (CAM.D - z1 * sp);
+    const x1 = (sx - CAM.ox) / CAM.zoom / k;
+    const c = Math.cos(CAM.yaw), s = Math.sin(CAM.yaw);
+    return { x: x1 * c + z1 * s, z: -x1 * s + z1 * c };
+  }
+  // Niebla: lo lejano se apaga
+  const fog = (d) => clamp((CAM.D + 620 - d) / 980, 0.5, 1);
+
+  // Encuadre automático: todas las nubes caben en el canvas aunque gire la cámara
+  function fitCamera(dt) {
+    const pad = 18, top = EMBED ? (W < 560 ? 30 : 44) : 66, bottom = EMBED ? 18 : 36;
+    let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for (const c of clouds) {
+      for (const dx of [-1, 1]) for (const dz of [-1, 1]) for (const h of [0, c.h0 + c.sigma * 2.5]) {
+        projRaw(c.cx + dx * c.sigma * 1.7, h, c.cz + dz * c.sigma * 1.7, _p);
+        x0 = Math.min(x0, _p.x); x1 = Math.max(x1, _p.x); y0 = Math.min(y0, _p.y); y1 = Math.max(y1, _p.y);
+      }
+    }
+    const zoom = Math.max(0.05, Math.min((W - pad * 2) / (x1 - x0), (H - top - bottom) / (y1 - y0)));
+    const ox = W / 2 - ((x0 + x1) / 2) * zoom;
+    const oy = top + (H - top - bottom) / 2 - ((y0 + y1) / 2) * zoom;
+    const f = dt ? 1 - Math.exp(-dt * 4) : 1;
+    CAM.zoom += (zoom - CAM.zoom) * f;
+    CAM.ox += (ox - CAM.ox) * f;
+    CAM.oy += (oy - CAM.oy) * f;
+  }
+
+  // ================= nubes =================
+
+  function buildClouds(defs) {
+    return defs.map((def, ci) => {
+      const count = def.count ?? POINTS;
+      const off = new Float32Array(count * 2);
+      const offY = new Float32Array(count);
+      for (let i = 0; i < count; i++) {
+        off[i * 2] = gauss();
+        off[i * 2 + 1] = gauss();
+        offY[i] = gauss() * 0.8;
+      }
+      // Palabras en puntos cercanos al centro, sin repetir
+      const words = new Map();
+      const near = [...Array(count).keys()].filter((i) => Math.hypot(off[i * 2], off[i * 2 + 1], offY[i]) < 1.6).sort(() => Math.random() - 0.5);
+      def.words.forEach((w, k) => near[k] !== undefined && words.set(near[k], w));
+      // Plexus: pares cercanos en 3D (cuadrícula espacial sobre x, z)
+      const T = def.n === 'GW' ? 0.26 : 0.46;
+      const grid = new Map();
+      const key = (gx, gy) => gx * 10007 + gy;
+      for (let i = 0; i < count; i++) {
+        const kk = key(Math.floor(off[i * 2] / T), Math.floor(off[i * 2 + 1] / T));
+        (grid.get(kk) ?? grid.set(kk, []).get(kk)).push(i);
+      }
+      const pairs = [];
+      for (let i = 0; i < count; i++) {
+        const gx = Math.floor(off[i * 2] / T), gy = Math.floor(off[i * 2 + 1] / T);
+        for (let dx = -1; dx <= 1; dx++)
+          for (let dy = -1; dy <= 1; dy++)
+            for (const j of grid.get(key(gx + dx, gy + dy)) ?? []) {
+              if (j <= i) continue;
+              const d = Math.hypot(off[i * 2] - off[j * 2], off[i * 2 + 1] - off[j * 2 + 1], (offY[i] - offY[j]) * 0.7);
+              if (d < T) pairs.push(i, j);
+            }
+      }
+      const sigma = WORLD.UNIT * (def.sigmaMul ?? 1);
+      return {
+        def, ci, count, off, offY, words, pairs: new Uint16Array(pairs),
+        color: V(def.c), processed: new Uint8Array(count), nProcessed: 0, wordsDone: new Set(),
+        cx: def.u * WORLD.RX, cz: def.v * WORLD.RZ, sigma, h0: def.n === 'GW' ? sigma * 0.9 : sigma * 1.25,
+        glow: 0,
+        sx: new Float32Array(count), sy: new Float32Array(count), sk: new Float32Array(count), sd: new Float32Array(count),
+      };
+    });
+  }
+
+  function layout() {
+    const rect = cv.getBoundingClientRect();
+    W = rect.width;
+    H = rect.height;
+    DPR = Math.min(2, window.devicePixelRatio || 1);
+    cv.width = Math.max(1, Math.round(W * DPR));
+    cv.height = Math.max(1, Math.round(H * DPR));
+    ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+    unit = WORLD.UNIT;
+    creature.r = unit * 0.36;
+    creature.seg = unit * 0.31;
+    if (W > 0 && H > 0) fitCamera(0);
+  }
+
+  const ptX = (c, i) => c.cx + c.off[i * 2] * c.sigma;
+  const ptZ = (c, i) => c.cz + c.off[i * 2 + 1] * c.sigma;
+  const ptY = (c, i) => Math.max(6, c.h0 + c.offY[i] * c.sigma * 0.7);
+  const coverage = (c) => c.nProcessed / c.count;
+
+  // ================= criatura =================
+
+  const bodyHeight = () => unit * 1.8 + Math.sin(S.time * 1.7) * unit * 0.08 * MOTION;
+
+  function makeLegs(n) {
+    const legs = [];
+    creature.y = bodyHeight();
+    for (let i = 0; i < n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      const joints = [];
+      for (let k = 0; k <= SEGMENTS; k++) {
+        const r = creature.r + k * creature.seg * 0.55;
+        joints.push({ x: creature.x + Math.cos(a) * r, y: creature.y - k * creature.seg * 0.4, z: creature.z + Math.sin(a) * r });
+      }
+      legs.push({ a, joints, foot: { ...joints[SEGMENTS] }, hold: null, step: null, nextExplore: rand(0.3, 1.6) });
+    }
+    creature.legs = legs;
+  }
+
+  function anchorOf(leg) {
+    const a = leg.a + creature.rot * 0.15;
+    return { x: creature.x + Math.cos(a) * creature.r * 0.9, y: creature.y - creature.r * 0.25, z: creature.z + Math.sin(a) * creature.r * 0.9, a };
+  }
+
+  // FABRIK en 3D, con la rodilla arqueada hacia fuera y hacia arriba
+  function fabrik(joints, base, target, L, out) {
+    const n = joints.length;
+    const total = L * (n - 1);
+    const dx = target.x - base.x, dy = target.y - base.y, dz = target.z - base.z;
+    const d = Math.hypot(dx, dy, dz) || 1;
+    if (d >= total * 0.999) {
+      for (let k = 0; k < n; k++) {
+        joints[k].x = base.x + (dx / d) * L * k;
+        joints[k].y = base.y + (dy / d) * L * k;
+        joints[k].z = base.z + (dz / d) * L * k;
+      }
+      return;
+    }
+    for (let k = 1; k < n - 1; k++) {
+      const f = Math.sin((k / (n - 1)) * Math.PI) * L * 0.22;
+      joints[k].x += out.x * f;
+      joints[k].y += out.y * f;
+      joints[k].z += out.z * f;
+    }
+    for (let it = 0; it < 3; it++) {
+      joints[n - 1].x = target.x; joints[n - 1].y = target.y; joints[n - 1].z = target.z;
+      for (let k = n - 2; k >= 0; k--) {
+        const ax = joints[k].x - joints[k + 1].x, ay = joints[k].y - joints[k + 1].y, az = joints[k].z - joints[k + 1].z;
+        const l = Math.hypot(ax, ay, az) || 1;
+        joints[k].x = joints[k + 1].x + (ax / l) * L;
+        joints[k].y = joints[k + 1].y + (ay / l) * L;
+        joints[k].z = joints[k + 1].z + (az / l) * L;
+      }
+      joints[0].x = base.x; joints[0].y = base.y; joints[0].z = base.z;
+      for (let k = 1; k < n; k++) {
+        const ax = joints[k].x - joints[k - 1].x, ay = joints[k].y - joints[k - 1].y, az = joints[k].z - joints[k - 1].z;
+        const l = Math.hypot(ax, ay, az) || 1;
+        joints[k].x = joints[k - 1].x + (ax / l) * L;
+        joints[k].y = joints[k - 1].y + (ay / l) * L;
+        joints[k].z = joints[k - 1].z + (az / l) * L;
+      }
+    }
+  }
+
+  function heldSet() {
+    const s = new Set();
+    for (const l of creature.legs) {
+      if (l.hold) s.add(l.hold.c * 4096 + l.hold.i);
+      if (l.step) s.add(l.step.c * 4096 + l.step.i);
+    }
+    return s;
+  }
+
+  // Elige un punto para la pata: en su ángulo, hacia donde se mueve y, si puede, sin procesar
+  function chooseFoothold(leg, explore, held) {
+    const reach = creature.seg * SEGMENTS;
+    const an = anchorOf(leg);
+    const sp = Math.hypot(creature.vx, creature.vz);
+    const mvx = sp > 1 ? creature.vx / sp : 0, mvz = sp > 1 ? creature.vz / sp : 0;
+    const ix = creature.x + Math.cos(an.a) * reach * 0.55 + creature.vx * 0.3;
+    const iz = creature.z + Math.sin(an.a) * reach * 0.55 + creature.vz * 0.3;
+    const iy = creature.y - reach * 0.35;
+    let best = null, bestScore = -Infinity;
+    for (const c of clouds) {
+      if (Math.hypot(c.cx - creature.x, c.cz - creature.z) > reach + c.sigma * 3.2) continue;
+      for (let i = 0; i < c.count; i++) {
+        if (held.has(c.ci * 4096 + i)) continue;
+        const px = ptX(c, i), py = ptY(c, i), pz = ptZ(c, i);
+        const d = Math.hypot(px - an.x, py - an.y, pz - an.z);
+        if (d > reach * 0.94 || d < creature.r * 0.4) continue;
+        const bx = px - creature.x, bz = pz - creature.z;
+        const bl = Math.hypot(bx, bz) || 1;
+        const angle = (bx / bl) * Math.cos(an.a) + (bz / bl) * Math.sin(an.a);
+        if (angle < 0.15) continue;
+        let score = -Math.hypot(px - ix, py - iy, pz - iz) / reach + angle * 0.7 + ((mvx * bx + mvz * bz) / bl) * 0.35;
+        if (!c.processed[i]) score += explore ? 0.9 : 0.15;
+        if (c.words.has(i) && !c.wordsDone.has(i)) score += explore ? 1.2 : 0.5;
+        score += Math.random() * 0.12;
+        if (score > bestScore) { bestScore = score; best = { c: c.ci, i }; }
+      }
+    }
+    return best;
+  }
+
+  function touch(c, i) {
+    if (!c.processed[i]) { c.processed[i] = 1; c.nProcessed++; }
+    const word = c.words.get(i);
+    if (word && !c.wordsDone.has(i)) {
+      c.wordsDone.add(i);
+      // Sin etiquetas durante el arranque; como mucho 4 a la vez para no saturar
+      if (!S.warming) {
+        S.labels.push({ X: ptX(c, i), Y: ptY(c, i), Z: ptZ(c, i), c: c.ci, word, t0: S.time });
+        if (S.labels.length > 4) S.labels.shift();
+      }
+      logRow(c, word);
+    }
+  }
+
+  function updateLegs(dt) {
+    const reach = creature.seg * SEGMENTS;
+    const sp = Math.hypot(creature.vx, creature.vz);
+    let steps = 0;
+    const held = heldSet();
+    const order = creature.legs
+      .map((l) => {
+        if (!l.hold) return { l, need: 2 };
+        const c = clouds[l.hold.c];
+        const an = anchorOf(l);
+        return { l, need: Math.hypot(ptX(c, l.hold.i) - an.x, ptY(c, l.hold.i) - an.y, ptZ(c, l.hold.i) - an.z) / reach };
+      })
+      .sort((a, b) => b.need - a.need);
+
+    for (const { l, need } of order) {
+      const an = anchorOf(l);
+      if (l.step) {
+        l.step.t += dt;
+        const k = clamp(l.step.t / l.step.dur, 0, 1);
+        const c = clouds[l.step.c];
+        const tx = ptX(c, l.step.i), ty = ptY(c, l.step.i), tz = ptZ(c, l.step.i);
+        const e = k * k * (3 - 2 * k);
+        const lift = Math.sin(k * Math.PI) * creature.seg * 1.1;
+        l.foot.x = l.step.fx + (tx - l.step.fx) * e;
+        l.foot.y = l.step.fy + (ty - l.step.fy) * e + lift;
+        l.foot.z = l.step.fz + (tz - l.step.fz) * e;
+        if (k >= 1) {
+          l.hold = { c: l.step.c, i: l.step.i };
+          l.step = null;
+          touch(c, l.hold.i);
+        }
+        continue;
+      }
+      if (l.hold) {
+        const c = clouds[l.hold.c];
+        l.foot.x = ptX(c, l.hold.i); l.foot.y = ptY(c, l.hold.i); l.foot.z = ptZ(c, l.hold.i);
+      }
+      const tooFar = !l.hold || need > 0.97;
+      l.nextExplore -= dt * MOTION;
+      const explore = !!l.hold && sp < unit * 0.9 && l.nextExplore <= 0;
+      if ((tooFar || explore) && steps < 3) {
+        const pick = chooseFoothold(l, explore, held);
+        if (pick) {
+          held.add(pick.c * 4096 + pick.i);
+          l.step = { fx: l.foot.x, fy: l.foot.y, fz: l.foot.z, c: pick.c, i: pick.i, t: 0, dur: rand(0.15, 0.3) / MOTION };
+          l.hold = null;
+          steps++;
+          if (explore) l.nextExplore = rand(0.5, 1.5);
+          continue;
+        }
+        if (tooFar) l.hold = null;
+        if (explore) l.nextExplore = rand(0.3, 0.8);
+      }
+      // Colgando: hacia atrás respecto al movimiento y hacia abajo
+      if (!l.hold) {
+        const bx = sp > 1 ? -creature.vx / sp : 0, bz = sp > 1 ? -creature.vz / sp : 0;
+        const dx = Math.cos(an.a) * 0.45 + bx * 0.9, dy = -0.6, dz = Math.sin(an.a) * 0.45 + bz * 0.9;
+        const dl = Math.hypot(dx, dy, dz) || 1;
+        const tx = an.x + (dx / dl) * reach * 0.8, ty = an.y + (dy / dl) * reach * 0.8, tz = an.z + (dz / dl) * reach * 0.8;
+        const f = 1 - Math.exp(-dt * 6);
+        l.foot.x += (tx - l.foot.x) * f;
+        l.foot.y += (ty - l.foot.y) * f;
+        l.foot.z += (tz - l.foot.z) * f;
+      }
+    }
+    for (const l of creature.legs) {
+      const an = anchorOf(l);
+      const o = { x: Math.cos(an.a) * 0.8, y: 0.6, z: Math.sin(an.a) * 0.8 };
+      fabrik(l.joints, an, l.foot, creature.seg, o);
+    }
+  }
+
+  // ================= flujo, registro y métricas =================
+
+  function logRow(c, word) {
+    let line;
+    if (S.data && S.data.mensajes.length) {
+      const m = S.data.mensajes[S.data.i % S.data.mensajes.length];
+      S.data.i++;
+      const tabla = String(m.tabla ?? 'v2.db'), estado = String(m.estado ?? '—');
+      if (/inbound/i.test(tabla)) S.inbound++;
+      if (/outbound/i.test(tabla)) S.outbound++;
+      if (/retry|reintent|fail|fallid/i.test(estado)) S.retries++;
+      const txt = [m.canal, m.texto].filter(Boolean).join(': ');
+      line = { t: S.sim, table: tabla, action: 'ROW', state: estado, word: txt.length > 40 ? txt.slice(0, 39) + '…' : txt };
+    } else {
+      const d = c.def;
+      const k = Math.floor(Math.random() * d.actions.length);
+      const action = d.actions[k], state = d.states[k];
+      if (d.table === 'inbound.db' && action === 'INSERT') S.inbound++;
+      if (d.table === 'outbound.db' && action === 'INSERT') S.outbound++;
+      if (action === 'retry') S.retries++;
+      if (d.n === '05') S.memKiB = Math.min(4096, S.memKiB + rand(6, 48));
+      line = { t: S.sim, table: d.table, action, state, word };
+    }
+    S.log.push(line);
+    if (S.log.length > 40) S.log.shift();
+    const codes = c.def.code;
+    S.code = codes[Math.floor(Math.random() * codes.length)];
+    dirty.log = true;
+  }
+
+  function enterStage(k) {
+    S.stage = k;
+    S.stageTime = 0;
+    S.lastAdvance = S.time;
+    if (mode !== 'nano') return;
+    const d = STAGES[k];
+    S.code = d.code[0];
+    // Filas que siempre ocurren en cada turno
+    if (d.n === '03') logFixed(clouds[k], 'INSERT', 'pending', 'mensaje');
+    if (d.n === '07') logFixed(clouds[k], 'INSERT', 'queued', 'respuesta');
+    if (d.n === '04' && S.container.state !== 'running') {
+      S.container.state = 'spawn';
+      S.container.spawnUntil = S.time + 2;
+      S.container.spawned = true;
+      S.container.lastBeat = S.time;
+    }
+    if (d.n === '08' && Math.random() < 0.25) logFixed(clouds[k], 'retry', 'reintento', 'backoff 2s');
+    dirty.tabs = true;
+  }
+
+  function logFixed(c, action, state, word) {
+    if (S.data) return;
+    if (c.def.table === 'inbound.db' && action === 'INSERT') S.inbound++;
+    if (c.def.table === 'outbound.db' && action === 'INSERT') S.outbound++;
+    if (action === 'retry') S.retries++;
+    S.log.push({ t: S.sim, table: c.def.table, action, state, word });
+    if (S.log.length > 40) S.log.shift();
+    dirty.log = true;
+  }
+
+  function resetCoverage() {
+    for (const c of clouds) { c.processed.fill(0); c.nProcessed = 0; c.wordsDone.clear(); }
+    S.labels = [];
+  }
+
+  function newMessage() {
+    S.turn++;
+    resetCoverage();
+    enterStage(0);
+    logFixed(clouds[0], 'recv', 'evento', `turno ${S.turn}`);
+  }
+
+  function advance() {
+    const next = (S.stage + 1) % clouds.length;
+    if (mode === 'nano' && next === 0) newMessage();
+    else enterStage(next);
+  }
+
+  // ================= simulación =================
+
+  function update(dt) {
+    S.time += dt;
+    S.sim += dt;
+    creature.rot += dt * 0.6 * (REDUCED ? 0 : 1);
+    CAM.yaw = CAM.userYaw + (REDUCED ? 0 : Math.sin(S.time * 0.07) * 0.3);
+
+    // Destino: clic en el suelo (pausa 5 s) o la nube de la etapa con un pequeño paseo
+    let tx, tz;
+    const paused = S.time < S.pausedUntil;
+    if (S.target && (paused || !S.auto)) {
+      tx = S.target.x; tz = S.target.z;
+    } else {
+      S.target = null;
+      const c = clouds[S.stage];
+      S.wander += dt * 0.45 * MOTION;
+      const rr = mode === 'open' && S.stage === 0 ? c.sigma * 0.9 : c.sigma * 0.55;
+      tx = c.cx + Math.cos(S.wander) * rr;
+      tz = c.cz + Math.sin(S.wander * 1.3) * rr * 0.7;
+    }
+    const dx = tx - creature.x, dz = tz - creature.z;
+    const dist = Math.hypot(dx, dz);
+    const maxSp = unit * 3.4 * MOTION * (S.M ? S.M.speed : 1);
+    const sp = maxSp * clamp(dist / (unit * 1.6), 0, 1);
+    const dvx = dist > 0.5 ? (dx / dist) * sp : 0, dvz = dist > 0.5 ? (dz / dist) * sp : 0;
+    const f = 1 - Math.exp(-dt * 2.6);
+    creature.vx += (dvx - creature.vx) * f;
+    creature.vz += (dvz - creature.vz) * f;
+    creature.x += creature.vx * dt;
+    creature.z += creature.vz * dt;
+    creature.y = bodyHeight();
+
+    // Avance automático: un tiempo dentro de cada nube
+    if (S.auto && !paused) {
+      const c = clouds[S.stage];
+      if (Math.hypot(c.cx - creature.x, c.cz - creature.z) < c.sigma * 1.6) S.stageTime += dt;
+      if (mode === 'nano' && S.stageTime >= (S.M ? S.M.dwell[S.stage] : STAGE_SECONDS)) advance();
+      if (mode === 'open' && S.stageTime >= STAGE_SECONDS) { S.stageTime = 0; S.lastAdvance = S.time; }
+    } else {
+      S.lastAdvance = S.time;
+    }
+
+    // Contenedor y latido
+    const C = S.container;
+    if (C.state === 'spawn' && S.time >= C.spawnUntil) C.state = 'running';
+    if (mode === 'nano' && C.spawned && C.state !== 'spawn') C.state = S.stage >= 3 && S.stage <= 6 ? 'running' : 'idle';
+    if (C.spawned && S.time - C.lastBeat >= BEAT) { C.lastBeat = S.time; C.beatFlash = 0.18; }
+    C.beatFlash = Math.max(0, C.beatFlash - dt);
+
+    for (const c of clouds) {
+      const active = (mode === 'nano' && c.ci === S.stage) || Math.hypot(c.cx - creature.x, c.cz - creature.z) < c.sigma * 2;
+      const base = S.M && mode === 'nano' ? S.M.weight[c.ci] * 0.55 : 0;
+      c.glow += ((active ? 1 : base) - c.glow) * (1 - Math.exp(-dt * 3));
+    }
+    updateLegs(dt);
+    if (W > 0) fitCamera(dt);
+    S.labels = S.labels.filter((l) => S.time - l.t0 < 2.5);
+  }
+
+  // ================= dibujo =================
+
+  // Polilínea 3D proyectada
+  function path3(pts) {
+    ctx.beginPath();
+    pts.forEach(([x, y, z], i) => {
+      proj(x, y, z, _p);
+      if (i) ctx.lineTo(_p.x, _p.y);
+      else ctx.moveTo(_p.x, _p.y);
+    });
+  }
+  function circle3(cx, y, cz, r, n = 48) {
+    const pts = [];
+    for (let i = 0; i <= n; i++) {
+      const a = (i / n) * Math.PI * 2;
+      pts.push([cx + Math.cos(a) * r, y, cz + Math.sin(a) * r]);
+    }
+    return pts;
+  }
+
+  function drawFloor() {
+    const grid = V('--grid');
+    const GX = WORLD.RX * 1.75, GZ = WORLD.RZ * 1.9, step = 70;
+    ctx.lineWidth = 1;
+    // Rejilla con desvanecimiento hacia los bordes y la distancia
+    const seg = (x0, z0, x1, z1) => {
+      const n = 10;
+      for (let i = 0; i < n; i++) {
+        const ax = x0 + ((x1 - x0) * i) / n, az = z0 + ((z1 - z0) * i) / n;
+        const bx = x0 + ((x1 - x0) * (i + 1)) / n, bz = z0 + ((z1 - z0) * (i + 1)) / n;
+        const mx = (ax + bx) / 2, mz = (az + bz) / 2;
+        const edge = clamp(1 - Math.hypot(mx / GX, mz / GZ), 0, 1);
+        proj(ax, 0, az, _p);
+        const sx = _p.x, sy = _p.y, d = _p.d;
+        proj(bx, 0, bz, _p);
+        ctx.strokeStyle = hexA(grid, 0.16 * edge * fog(d));
+        ctx.beginPath(); ctx.moveTo(sx, sy); ctx.lineTo(_p.x, _p.y); ctx.stroke();
+      }
+    };
+    for (let x = -GX; x <= GX; x += step) seg(x, -GZ, x, GZ);
+    for (let z = -GZ; z <= GZ; z += step) seg(-GX, z, GX, z);
+    // Anillos de radar y un pulso que se expande
+    ctx.strokeStyle = hexA(grid, 0.14);
+    for (const r of [160, 320, 480]) { path3(circle3(0, 0, 0, r, 72)); ctx.stroke(); }
+    if (!REDUCED) {
+      const pr = (S.time * 90) % 620;
+      ctx.strokeStyle = hexA(V('--c4'), 0.22 * (1 - pr / 620));
+      path3(circle3(0, 0, 0, pr, 72));
+      ctx.stroke();
+    }
+  }
+
+  function drawContainerBox() {
+    const box = mode === 'open' ? clouds : clouds.slice(3, 7);
+    let x0 = Infinity, z0 = Infinity, x1 = -Infinity, z1 = -Infinity, top = 0;
+    for (const c of box) {
+      x0 = Math.min(x0, c.cx - c.sigma * 2.2); x1 = Math.max(x1, c.cx + c.sigma * 2.2);
+      z0 = Math.min(z0, c.cz - c.sigma * 2.2); z1 = Math.max(z1, c.cz + c.sigma * 2.2);
+      top = Math.max(top, c.h0 + c.sigma * 2.6);
+    }
+    const col = mode === 'open' ? V('--gateway') : V('--container');
+    const corners = [[x0, z0], [x1, z0], [x1, z1], [x0, z1]];
+    ctx.save();
+    // Suelo del contenedor
+    ctx.fillStyle = hexA(col, 0.045);
+    path3(corners.map(([x, z]) => [x, 0, z]));
+    ctx.closePath();
+    ctx.fill();
+    // Aristas de la caja (punteadas)
+    ctx.setLineDash([4, 6]);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = hexA(col, 0.38);
+    for (const y of [0, top]) { path3([...corners, corners[0]].map(([x, z]) => [x, y, z])); ctx.stroke(); }
+    for (const [x, z] of corners) { path3([[x, 0, z], [x, top, z]]); ctx.stroke(); }
+    ctx.setLineDash([]);
+    // Etiqueta en la esquina superior más cercana a la cámara
+    const label = mode === 'open' ? 'openclaw · un proceso · memoria compartida' : `container · aislado · ncl-${S.sid}`;
+    let best = null;
+    for (const [x, z] of corners) { proj(x, top, z, _p); if (!best || _p.d < best.d) best = { ..._p }; }
+    ctx.font = `600 10.5px ${V('--font')}`;
+    ctx.fillStyle = hexA(col, 0.85);
+    ctx.textAlign = best.x > W / 2 ? 'right' : 'left';
+    ctx.fillText(label, best.x + (best.x > W / 2 ? -8 : 8), best.y - 8);
+    ctx.textAlign = 'left';
+    ctx.restore();
+  }
+
+  function drawThreads() {
+    const thread = V('--thread');
+    const arc = (a, b, lift, n = 28) => {
+      const pts = [];
+      for (let i = 0; i <= n; i++) {
+        const t = i / n;
+        pts.push([a.cx + (b.cx - a.cx) * t, a.h0 + (b.h0 - a.h0) * t + Math.sin(t * Math.PI) * lift, a.cz + (b.cz - a.cz) * t]);
+      }
+      return pts;
+    };
+    ctx.lineWidth = 1;
+    if (mode === 'open') {
+      const gw = clouds[0];
+      for (const c of clouds.slice(1)) {
+        ctx.strokeStyle = hexA(c.color, 0.25);
+        path3(arc(c, gw, unit * 1.2));
+        ctx.stroke();
+      }
+      return;
+    }
+    for (let k = 0; k < clouds.length; k++) {
+      const a = clouds[k], b = clouds[(k + 1) % clouds.length];
+      const long = k === 6 || k === 7; // 07→08 y 08→01: el hilo largo que cierra el ciclo
+      const pts = arc(a, b, long ? unit * 4.2 : unit * 1.4);
+      ctx.strokeStyle = hexA(thread, long ? 0.4 : 0.12);
+      ctx.lineWidth = long ? 1.5 : 1;
+      ctx.setLineDash(long ? [] : [2, 6]);
+      path3(pts);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      if (long && !REDUCED) {
+        for (let p = 0; p < 7; p++) {
+          const t = (S.time * 0.12 + p / 7) % 1;
+          const i = Math.floor(t * (pts.length - 1));
+          const [x, y, z] = pts[i];
+          proj(x, y, z, _p);
+          ctx.fillStyle = hexA(t < 0.5 ? a.color : b.color, 0.85);
+          ctx.beginPath(); ctx.arc(_p.x, _p.y, 2 * clamp(_p.k, 0.6, 1.6), 0, Math.PI * 2); ctx.fill();
+        }
+      }
+    }
+  }
+
+  function projectCloud(c) {
+    for (let i = 0; i < c.count; i++) {
+      proj(ptX(c, i), ptY(c, i), ptZ(c, i), _p);
+      c.sx[i] = _p.x; c.sy[i] = _p.y; c.sk[i] = _p.k; c.sd[i] = _p.d;
+    }
+  }
+
+  function drawCloudBase(c) {
+    // Halo en el suelo y haz de luz hasta el centro de la nube
+    const g = c.glow;
+    ctx.fillStyle = hexA(c.color, 0.035 + g * 0.06);
+    path3(circle3(c.cx, 0, c.cz, c.sigma * 2.1, 40));
+    ctx.fill();
+    ctx.strokeStyle = hexA(c.color, 0.12 + g * 0.25);
+    ctx.lineWidth = 1;
+    path3(circle3(c.cx, 0, c.cz, c.sigma * (1.4 + (REDUCED ? 0 : Math.sin(S.time * 2 + c.ci) * 0.08)), 40));
+    ctx.stroke();
+    const a = proj(c.cx, 0, c.cz), b = proj(c.cx, c.h0, c.cz);
+    const lg = ctx.createLinearGradient(a.x, a.y, b.x, b.y);
+    lg.addColorStop(0, hexA(c.color, 0.25 + g * 0.3));
+    lg.addColorStop(1, hexA(c.color, 0));
+    ctx.strokeStyle = lg;
+    ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
+  }
+
+  function drawCloud(c) {
+    const g = c.glow;
+    const fc = fog(proj(c.cx, c.h0, c.cz, _p).d);
+    ctx.save();
+    ctx.globalCompositeOperation = V('--blend') || 'lighter';
+    // Resplandor interior: da volumen a la nube
+    const cc = proj(c.cx, c.h0, c.cz);
+    const R = c.sigma * 2 * cc.k;
+    const rg = ctx.createRadialGradient(cc.x, cc.y, 0, cc.x, cc.y, R);
+    rg.addColorStop(0, hexA(c.color, (0.16 + g * 0.16) * fc));
+    rg.addColorStop(1, hexA(c.color, 0));
+    ctx.fillStyle = rg;
+    ctx.beginPath(); ctx.arc(cc.x, cc.y, R, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = hexA(c.color, (0.08 + g * 0.16) * fc);
+    ctx.lineWidth = 0.6;
+    ctx.beginPath();
+    for (let p = 0; p < c.pairs.length; p += 2) {
+      const i = c.pairs[p], j = c.pairs[p + 1];
+      ctx.moveTo(c.sx[i], c.sy[i]);
+      ctx.lineTo(c.sx[j], c.sy[j]);
+    }
+    ctx.stroke();
+    for (let i = 0; i < c.count; i++) {
+      const word = c.words.has(i);
+      const done = c.processed[i];
+      const k = clamp(c.sk[i], 0.5, 2);
+      ctx.fillStyle = hexA(c.color, (done ? 0.95 : 0.42 + g * 0.35) * fog(c.sd[i]));
+      const s = (word ? 3.2 : done ? 2.5 : 1.9) * k;
+      ctx.fillRect(c.sx[i] - s / 2, c.sy[i] - s / 2, s, s);
+      if (word) {
+        ctx.strokeStyle = hexA(c.color, (c.wordsDone.has(i) ? 0.9 : 0.35 + g * 0.3) * fog(c.sd[i]));
+        ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(c.sx[i], c.sy[i], 4.4 * k, 0, Math.PI * 2); ctx.stroke();
+      }
+    }
+    ctx.restore();
+  }
+
+  function drawCloudLabel(c) {
+    const font = V('--font');
+    const g = c.glow;
+    proj(c.cx, c.h0 + c.sigma * 2.35, c.cz, _p);
+    const fc = fog(_p.d);
+    ctx.textAlign = 'center';
+    ctx.font = `600 ${c.def.n === 'CH' ? 9.5 : 11}px ${font}`;
+    ctx.fillStyle = hexA(c.color, (0.55 + g * 0.45) * fc);
+    const title = c.def.n === 'CH' ? c.def.name.toLowerCase() : `${c.def.n === 'GW' ? '' : c.def.n + ' '}${c.def.name}`;
+    ctx.fillText(title, _p.x, _p.y);
+    if (c.def.n !== 'CH' && W >= 560) {
+      ctx.font = `10px ${font}`;
+      ctx.fillStyle = hexA(V('--ink'), (0.4 + g * 0.45) * fc);
+      ctx.fillText(S.M && mode === 'nano' ? S.M.labels[c.ci] : `${Math.round(coverage(c) * 100)}% procesado`, _p.x, _p.y + 13);
+    }
+    ctx.textAlign = 'left';
+  }
+
+  function drawCreature() {
+    const { x, y, z, r } = creature;
+    const leg = V('--leg');
+    const ph = (S.time % BEAT) / BEAT;
+    const pulse = 1 + (Math.exp(-ph * 40) * 0.16 + Math.exp(-Math.abs(ph - 0.16) * 40) * 0.09) * (REDUCED ? 0.3 : 1);
+    const sla = S.M ? S.M.sla : S.auto && S.time - S.lastAdvance > SLA_SECONDS;
+    const coreCol = sla && Math.floor(S.time * 4) % 2 === 0 ? V('--alert') : V('--core');
+
+    // Sombra en el suelo
+    const sh = proj(x, 0, z);
+    ctx.fillStyle = 'rgba(28,33,66,0.12)';
+    path3(circle3(x, 0, z, r * 1.7, 28));
+    ctx.fill();
+    ctx.strokeStyle = hexA(coreCol, 0.25);
+    ctx.lineWidth = 1;
+    path3(circle3(x, 0, z, r * 2.4 * pulse, 36));
+    ctx.stroke();
+
+    const body = proj(x, y, z);
+    const R = r * body.k * pulse;
+
+    // Espinas: anillo horizontal que gira; las de detrás se dibujan antes que el cuerpo
+    const spines = [];
+    const NS = 24;
+    for (let k = 0; k < NS; k++) {
+      const a = creature.rot + (k / NS) * Math.PI * 2;
+      const r0 = r * 1.05, r1 = r * (k % 2 ? 1.4 : 1.65) * pulse;
+      const p0 = proj(x + Math.cos(a) * r0, y, z + Math.sin(a) * r0);
+      const p1 = proj(x + Math.cos(a) * r1, y + (k % 2 ? 0 : r * 0.15), z + Math.sin(a) * r1);
+      spines.push({ p0, p1, back: p1.d > body.d });
+    }
+    const drawSpines = (back) => {
+      ctx.strokeStyle = hexA(V('--spine'), back ? 0.35 : 0.8);
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      for (const s of spines) if (s.back === back) { ctx.moveTo(s.p0.x, s.p0.y); ctx.lineTo(s.p1.x, s.p1.y); }
+      ctx.stroke();
+    };
+
+    // Patas (proyectadas, más gruesas cerca de la cámara)
+    for (const l of creature.legs) {
+      const pts = l.joints.map((j) => proj(j.x, j.y, j.z));
+      for (let k = 0; k < pts.length - 1; k++) {
+        const t = k / (pts.length - 1);
+        ctx.strokeStyle = hexA(leg, (0.78 - t * 0.35) * fog(pts[k].d));
+        ctx.lineWidth = Math.max(0.8, r * 0.26 * pts[k].k * (1 - t * 0.8));
+        ctx.lineCap = 'round';
+        ctx.beginPath(); ctx.moveTo(pts[k].x, pts[k].y); ctx.lineTo(pts[k + 1].x, pts[k + 1].y); ctx.stroke();
+      }
+      const fp = pts[pts.length - 1];
+      const footColor = l.hold ? clouds[l.hold.c].color : leg;
+      ctx.fillStyle = hexA(footColor, l.hold ? 0.95 : 0.5);
+      ctx.beginPath(); ctx.arc(fp.x, fp.y, (l.hold ? 2.8 : 1.8) * clamp(fp.k, 0.6, 1.8), 0, Math.PI * 2); ctx.fill();
+    }
+
+    drawSpines(true);
+    // Halo
+    ctx.save();
+    ctx.globalCompositeOperation = V('--blend') || 'lighter';
+    const gr = ctx.createRadialGradient(body.x, body.y, R * 0.2, body.x, body.y, R * 3.4);
+    gr.addColorStop(0, hexA(coreCol, 0.24));
+    gr.addColorStop(1, hexA(coreCol, 0));
+    ctx.fillStyle = gr;
+    ctx.beginPath(); ctx.arc(body.x, body.y, R * 3.4, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+    // Esfera con luz desde arriba a la izquierda
+    const sg = ctx.createRadialGradient(body.x - R * 0.38, body.y - R * 0.45, R * 0.08, body.x, body.y, R);
+    sg.addColorStop(0, V('--body-hi'));
+    sg.addColorStop(0.55, V('--body'));
+    sg.addColorStop(1, V('--body-lo'));
+    ctx.fillStyle = sg;
+    ctx.strokeStyle = hexA(V('--body-edge'), 0.8);
+    ctx.lineWidth = 1.4;
+    ctx.beginPath(); ctx.arc(body.x, body.y, R, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    // Núcleo
+    const cg = ctx.createRadialGradient(body.x, body.y, 0, body.x, body.y, R * 0.55);
+    cg.addColorStop(0, '#ffffff');
+    cg.addColorStop(0.35, coreCol);
+    cg.addColorStop(1, hexA(coreCol, 0.08));
+    ctx.fillStyle = cg;
+    ctx.beginPath(); ctx.arc(body.x, body.y, R * 0.55, 0, Math.PI * 2); ctx.fill();
+    // Brillo especular
+    ctx.fillStyle = 'rgba(255,255,255,0.35)';
+    ctx.beginPath(); ctx.ellipse(body.x - R * 0.4, body.y - R * 0.5, R * 0.22, R * 0.12, -0.6, 0, Math.PI * 2); ctx.fill();
+    drawSpines(false);
+
+    if (sla) {
+      ctx.font = `600 10px ${V('--font')}`;
+      ctx.fillStyle = V('--alert');
+      ctx.textAlign = 'center';
+      ctx.fillText(S.M ? `SLA · ${S.M.slaReason}` : 'SLA · sin avanzar', body.x, body.y - R * 2.6);
+      ctx.textAlign = 'left';
+    }
+  }
+
+  function drawLabels() {
+    ctx.font = `600 11px ${V('--font')}`;
+    const placed = [];
+    for (const l of S.labels) {
+      const age = (S.time - l.t0) / 2.5;
+      const a = age < 0.1 ? age / 0.1 : 1 - Math.max(0, (age - 0.7) / 0.3);
+      const c = clouds[l.c];
+      if (!c) continue;
+      const p = proj(l.X, l.Y, l.Z);
+      const w = ctx.measureText(l.word).width + 14;
+      const bx = clamp(p.x - w / 2, 4, W - w - 4);
+      let by = p.y - 32 - age * 8;
+      for (let tries = 0; tries < 8 && placed.some((q) => bx < q.x + q.w && bx + w > q.x && by < q.y + 22 && by + 22 > q.y); tries++) by -= 23;
+      by = Math.max(4, by);
+      placed.push({ x: bx, y: by, w });
+      ctx.fillStyle = `rgba(255,255,255,${0.95 * a})`;
+      ctx.strokeStyle = hexA(c.color, a);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect ? ctx.roundRect(bx, by, w, 20, 3) : ctx.rect(bx, by, w, 20);
+      ctx.fill(); ctx.stroke();
+      ctx.strokeStyle = hexA(c.color, 0.5 * a);
+      ctx.beginPath(); ctx.moveTo(p.x, p.y - 4); ctx.lineTo(p.x, by + 20); ctx.stroke();
+      ctx.fillStyle = hexA(V('--ink'), a);
+      ctx.fillText(l.word, bx + 7, by + 14);
+    }
+  }
+
+  function draw() {
+    ctx.clearRect(0, 0, W, H);
+    if (W < 10 || H < 10) return;
+    // Cielo: degradado con un brillo en el horizonte
+    const sky = ctx.createLinearGradient(0, 0, 0, H);
+    sky.addColorStop(0, V('--sky-top'));
+    sky.addColorStop(0.55, V('--bg'));
+    sky.addColorStop(1, V('--sky-bottom'));
+    ctx.fillStyle = sky;
+    ctx.fillRect(0, 0, W, H);
+    drawFloor();
+    drawContainerBox();
+    for (const c of clouds) projectCloud(c);
+    for (const c of clouds) drawCloudBase(c);
+    drawThreads();
+    // Profundidad: de lo más lejano a lo más cercano
+    const items = clouds.map((c) => ({ d: proj(c.cx, c.h0, c.cz, _p).d, draw: () => drawCloud(c) }));
+    items.push({ d: proj(creature.x, creature.y, creature.z, _p).d, draw: drawCreature });
+    items.sort((a, b) => b.d - a.d).forEach((it) => it.draw());
+    for (const c of clouds) drawCloudLabel(c);
+    drawLabels();
+  }
+
+  // ================= HUD =================
+
+  const dirty = { log: true, tabs: true };
+
+  function buildTabs() {
+    $('tabs').innerHTML = STAGES.map((s, k) => `<button class="tab" data-k="${k}" style="--tab-c:var(${s.c})" title="${s.name}">${s.n}</button>`).join('');
+    $('tabs').querySelectorAll('.tab').forEach((b) =>
+      b.addEventListener('click', () => {
+        if (mode !== 'nano') return;
+        S.target = null;
+        S.pausedUntil = 0;
+        enterStage(+b.dataset.k);
+      }),
+    );
+    $('bars').innerHTML = STAGES.map((s, k) => `<div class="bar" data-k="${k}" style="--bar-c:var(${s.c})"><span>${s.n} ${s.name.toLowerCase()}</span><div class="track"><div class="fill"></div></div><span class="pct">0%</span></div>`).join('');
+  }
+
+  function renderHud() {
+    $('metrics').innerHTML = S.M
+      ? `conversaciones <b>${S.M.conversations}</b> · inbound <b>${S.M.inbound}</b> · outbound <b>${S.M.outbound}</b> · errores <b>${S.M.errors}</b> · <span style="color:var(--dim)">${S.M.rangeLabel}</span>`
+      : `turnos <b>${S.turn}</b> · inbound <b>${S.inbound}</b> · outbound <b>${S.outbound}</b> · reintentos <b>${S.retries}</b>`;
+    if (dirty.tabs) {
+      document.querySelectorAll('.tab').forEach((b) => {
+        b.classList.toggle('active', mode === 'nano' && +b.dataset.k === S.stage);
+        b.disabled = mode !== 'nano';
+      });
+      dirty.tabs = false;
+    }
+    if (dirty.log) {
+      $('log').innerHTML = S.log.slice(-8).map((l) =>
+        `<div><span class="t">${fmtT(l.t)}</span>  ${escapeHtml(pad(l.table, 11))} ${escapeHtml(pad(l.action, 7))} ${escapeHtml(pad(l.state, 9))} <span class="w">"${escapeHtml(l.word)}"</span></div>`).join('');
+      dirty.log = false;
+    }
+    // Etapas
+    if (mode === 'nano') {
+      document.querySelectorAll('.bar').forEach((el) => {
+        const k = +el.dataset.k;
+        const pct = Math.round(coverage(clouds[k]) * 100);
+        el.querySelector('.fill').style.width = `${pct}%`;
+        el.querySelector('.pct').textContent = `${pct}%`;
+        el.classList.toggle('active', k === S.stage);
+      });
+    }
+    // Contenedor
+    const C = S.container;
+    const st = $('cstate');
+    st.textContent = C.state;
+    st.className = `state-${C.state}`;
+    $('beat').classList.toggle('on', C.beatFlash > 0);
+    $('since').textContent = C.spawned ? `hace ${(S.time - C.lastBeat).toFixed(1)} s` : 'sin latido';
+    $('cname').textContent = `ncl-${S.sid}`;
+    const kib = S.memKiB;
+    $('memsize').textContent = kib >= 4096 ? '4 MiB · tope' : kib >= 1024 ? `${(kib / 1024).toFixed(2)} MiB` : `${kib.toFixed(1)} KiB`;
+    $('memfill').style.width = `${(kib / 4096) * 100}%`;
+    // Turno
+    const score = Math.round((clouds.reduce((s, c) => s + coverage(c), 0) / clouds.length) * 100);
+    $('score').textContent = score;
+    $('turnlabel').textContent = `#${S.turn}`;
+    $('sid').textContent = S.data?.sid ?? S.sid;
+    $('logsrc').textContent = S.data ? (S.data.live ? `en vivo · ${S.data.mensajes.length} filas` : `JSON · ${S.data.mensajes.length} mensajes`) : 'simulación';
+    // Código actual
+    const code = S.code || clouds[S.stage]?.def.code[0] || '';
+    $('code').innerHTML = `<span style="color:${clouds[S.stage]?.color ?? 'inherit'}">${mode === 'nano' ? STAGES[S.stage].n : 'GW'}</span> › <span class="fn">${escapeHtml(code)}</span><span class="cursor"></span>`;
+    $('caption').hidden = !!S.M;
+    $('caption').textContent = mode === 'open'
+      ? 'OpenClaw: un único Gateway con todos los canales, sesiones y memoria en el mismo proceso. Aislamiento a nivel de aplicación.'
+      : 'NanoClaw: el host (canales, router, entrega) escribe inbound.db · el contenedor de la sesión escribe outbound.db · un escritor por archivo.';
+  }
+
+  // ================= ciclo =================
+
+  let last = performance.now();
+  let hudTimer = 0;
+  function frame(now) {
+    const dt = Math.min(0.05, (now - last) / 1000);
+    last = now;
+    update(dt);
+    draw();
+    hudTimer -= dt;
+    if (hudTimer <= 0) { renderHud(); hudTimer = 0.12; }
+    requestAnimationFrame(frame);
+  }
+
+  function setMode(m) {
+    mode = m;
+    clouds = buildClouds(m === 'nano' ? STAGES : OPENCLAW);
+    layout();
+    const c0 = clouds[0];
+    creature.x = c0.cx; creature.z = c0.cz; creature.vx = creature.vz = 0;
+    makeLegs(+$('legs').value);
+    S.stage = 0; S.stageTime = 0; S.lastAdvance = S.time; S.target = null; S.labels = [];
+    S.code = c0.def.code[0];
+    $('b-compare').textContent = m === 'nano' ? 'openclaw vs nanoclaw' : 'volver a nanoclaw';
+    $('b-compare').classList.toggle('on', m === 'open');
+    document.querySelector('.bars').style.opacity = m === 'nano' ? 1 : 0.35;
+    dirty.tabs = true;
+    // Adelanta 60 pasos para que la primera imagen ya tenga patas enganchadas
+    S.warming = true;
+    for (let i = 0; i < 60; i++) update(1 / 60);
+    S.warming = false;
+  }
+
+  function resetAll() {
+    S.turn = 1; S.inbound = 0; S.outbound = 0; S.retries = 0; S.sim = 0;
+    S.log = []; S.memKiB = 12; S.sid = shortId();
+    S.container = { state: 'idle', spawnUntil: 0, spawned: false, lastBeat: -1, beatFlash: 0 };
+    if (S.data) S.data.i = 0;
+    setMode(mode);
+    logFixed(clouds[0], 'recv', 'evento', mode === 'nano' ? 'telegram' : 'gateway');
+    dirty.log = true;
+  }
+
+  // ================= eventos =================
+
+  // Clic en el suelo: mover al agente · arrastrar: girar la cámara
+  let drag = null;
+  cv.addEventListener('pointerdown', (e) => {
+    drag = { x: e.clientX, y: e.clientY, moved: false, yaw: CAM.userYaw, pitch: CAM.pitch };
+    cv.setPointerCapture(e.pointerId);
+  });
+  cv.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
+    if (!drag.moved && Math.hypot(dx, dy) > 6) { drag.moved = true; cv.classList.add('dragging'); }
+    if (drag.moved) {
+      CAM.userYaw = drag.yaw + dx * 0.006;
+      CAM.pitch = clamp(drag.pitch + dy * 0.004, 0.6, 1.25);
+    }
+  });
+  const endDrag = (e) => {
+    if (drag && !drag.moved && e.type === 'pointerup') {
+      const r = cv.getBoundingClientRect();
+      const g = unproject(e.clientX - r.left, e.clientY - r.top);
+      S.target = { x: g.x, z: g.z };
+      S.pausedUntil = S.time + 5;
+    }
+    drag = null;
+    cv.classList.remove('dragging');
+  };
+  cv.addEventListener('pointerup', endDrag);
+  cv.addEventListener('pointercancel', endDrag);
+  $('legs').addEventListener('input', (e) => {
+    $('legsv').textContent = e.target.value;
+    makeLegs(+e.target.value);
+    for (let i = 0; i < 20; i++) updateLegs(1 / 60);
+  });
+  $('b-auto').addEventListener('click', () => {
+    S.auto = !S.auto;
+    $('b-auto').classList.toggle('on', S.auto);
+    S.lastAdvance = S.time;
+  });
+  $('b-reset').addEventListener('click', resetAll);
+  $('b-new').addEventListener('click', () => {
+    S.target = null; S.pausedUntil = 0;
+    if (mode === 'nano') newMessage();
+    else { S.turn++; resetCoverage(); }
+  });
+  $('b-compare').addEventListener('click', () => setMode(mode === 'nano' ? 'open' : 'nano'));
+
+  // Datos reales por JSON
+  const SAMPLE = {
+    sesiones: [{ id: 'ag-7f3c', grupo: 'ventas', canal: 'telegram' }],
+    mensajes: [
+      { tabla: 'inbound.db', estado: 'pending', canal: 'telegram', texto: 'Hola, ¿tenéis cita el jueves?' },
+      { tabla: 'v2.db', estado: 'session', canal: 'telegram', texto: 'resume ag-7f3c' },
+      { tabla: 'inbound.db', estado: 'delivered', canal: 'telegram', texto: 'despertar contenedor' },
+      { tabla: 'outbound.db', estado: 'queued', canal: 'telegram', texto: 'Sí, a las 10:00 o a las 12:30' },
+      { tabla: 'delivery', estado: 'enviado', canal: 'telegram', texto: 'adapter.deliver ok' },
+    ],
+  };
+  $('json').value = JSON.stringify(SAMPLE, null, 2);
+  $('b-json').addEventListener('click', () => { $('jerr').textContent = ''; $('dlg').showModal(); });
+  $('j-cancel').addEventListener('click', () => $('dlg').close());
+  $('j-sim').addEventListener('click', () => { S.data = null; $('dlg').close(); resetAll(); });
+  $('j-load').addEventListener('click', () => {
+    try {
+      const d = JSON.parse($('json').value);
+      if (!Array.isArray(d.mensajes) || !d.mensajes.length) throw new Error('Falta "mensajes" (lista no vacía).');
+      const s0 = Array.isArray(d.sesiones) ? d.sesiones[0] : null;
+      S.data = { mensajes: d.mensajes, i: 0, sid: s0 ? String(typeof s0 === 'object' ? s0.id ?? s0.nombre ?? 'json' : s0).slice(0, 12) : 'json' };
+      $('dlg').close();
+      resetAll();
+    } catch (err) {
+      $('jerr').textContent = `JSON no válido: ${err.message}`;
+    }
+  });
+
+  let resizeTimer;
+  window.addEventListener('resize', () => { clearTimeout(resizeTimer); resizeTimer = setTimeout(layout, 80); });
+  if (window.ResizeObserver) new ResizeObserver(() => { clearTimeout(resizeTimer); resizeTimer = setTimeout(layout, 60); }).observe($('stage'));
+
+  // ================= datos en vivo (?feed=url) =================
+  // Dentro de Agent Studio la página recibe ?feed=/api/flow y usa los mensajes reales
+  const FEED = new URLSearchParams(location.search).get('feed');
+  async function pullFeed(first) {
+    try {
+      const res = await fetch(FEED, { cache: 'no-store' });
+      if (!res.ok) throw new Error(res.status);
+      const d = await res.json();
+      if (!Array.isArray(d.mensajes) || !d.mensajes.length) return;
+      const s0 = Array.isArray(d.sesiones) ? d.sesiones[0] : null;
+      const i = S.data?.i ?? 0;
+      S.data = { mensajes: d.mensajes, i, sid: s0 ? String(s0.id ?? 'live').slice(0, 12) : 'live', live: true };
+      if (first) resetAll();
+      dirty.log = true;
+    } catch (err) {
+      console.warn('feed', err);
+    }
+  }
+
+  // ================= modo métricas =================
+  // La araña se comporta según las métricas reales:
+  //  · tiempo en cada nube ∝ latencia de esa fase   · velocidad ∝ 1 / latencia p50
+  //  · patas = agentes activos y conversaciones      · latido = mensajes por hora
+  //  · núcleo rojo = SLA (proyección > presupuesto, p95 > 8 s o errores)
+  const P = new URLSearchParams(location.search);
+  const EMBED = P.get('embed') === '1';
+  const METRICS_URL = P.get('metrics');
+  const fmtC = new Intl.NumberFormat('es', { notation: 'compact', maximumFractionDigits: 1 });
+  const fmtMs = (v) => (v >= 1000 ? `${(v / 1000).toFixed(1)} s` : `${Math.round(v)} ms`);
+  const fmtUsd = (v) => (v < 0.01 && v > 0 ? `$${v.toFixed(4)}` : `$${v.toFixed(2)}`);
+  const RANGE_H = { '24h': 24, '7d': 168, '30d': 720 };
+  const RANGE_LABEL = { '24h': 'últimas 24 h', '7d': 'últimos 7 días', '30d': 'últimos 30 días' };
+
+  function applyMetrics(m) {
+    if (!m || !m.kpis) return;
+    const k = m.kpis;
+    const step = Object.fromEntries((m.latency?.steps ?? []).map((s) => [s.step, s.avgMs]));
+    const g = (n) => step[n] ?? 0;
+    // Milisegundos atribuidos a cada nube (01–08)
+    const msBy = [
+      g('motor') * 0.5 + 5,
+      g('clasificar'),
+      g('nanoclaw') * 0.3,
+      g('nanoclaw') * 0.3,
+      g('conocimiento'),
+      g('accion'),
+      g('llm') + g('nanoclaw') * 0.4,
+      g('motor') * 0.5 + g('voz'),
+    ];
+    const maxMs = Math.max(1, ...msBy);
+    const weight = msBy.map((v) => v / maxMs);
+    const hasData = k.turns > 0;
+    const points = m.conversations?.points ?? [];
+    const guided = points.length ? Math.round((points.filter((p) => p.outcome === 'Flujo guiado').length / points.length) * 100) : 0;
+    const active = (m.agents ?? []).length;
+    const tph = k.turns / (RANGE_H[m.range] ?? 168);
+    const c = m.costMonth ?? { projection: 0, budget: Infinity };
+    const reasons = [];
+    if (c.projection > c.budget) reasons.push('presupuesto');
+    if (k.p95LatencyMs > 8000) reasons.push('p95 > 8 s');
+    if (k.errors > 0) reasons.push(`${k.errors} errores`);
+
+    S.M = {
+      dwell: weight.map((w) => (hasData ? 2 + w * 16 : STAGE_SECONDS)),
+      weight,
+      speed: hasData && k.p50LatencyMs ? clamp(2000 / k.p50LatencyMs, 0.4, 2) : 1,
+      sla: reasons.length > 0,
+      slaReason: reasons.join(' · '),
+      conversations: k.conversations,
+      inbound: k.turns,
+      outbound: Math.max(0, k.turns - k.conversations),
+      errors: k.errors,
+      rangeLabel: `${RANGE_LABEL[m.range] ?? m.range}${m.demo ? ' · con datos de ejemplo' : ''}`,
+      labels: [
+        `${fmtC.format(k.conversations)} conversaciones`,
+        `${guided}% por temas · ${fmtMs(g('clasificar'))}`,
+        `${fmtC.format(k.turns)} mensajes`,
+        `p50 ${fmtMs(k.p50LatencyMs)} · p95 ${fmtMs(k.p95LatencyMs)}`,
+        `${fmtMs(g('conocimiento'))} conocimiento`,
+        `${fmtMs(g('accion'))} acciones`,
+        `${fmtC.format(k.tokens)} tokens · ${fmtMs(g('llm'))}`,
+        `${fmtUsd(k.costUsd)} · ${k.errors} errores`,
+      ],
+    };
+    BEAT = hasData ? clamp(2.4 - Math.log10(1 + tph) * 0.8, 0.5, 2.4) : 1.5;
+    const legs = hasData ? clamp(Math.round(6 + active * 4 + k.conversations / 40), 6, 32) : 16;
+    if (legs !== creature.legs.length) {
+      $('legs').value = legs;
+      $('legsv').textContent = legs;
+      makeLegs(legs);
+      for (let i = 0; i < 20; i++) updateLegs(1 / 60);
+    }
+    $('legend-m').hidden = false;
+    $('legend-m').innerHTML =
+      `tiempo en cada nube = <b>latencia</b> · velocidad = <b>p50 ${fmtMs(k.p50LatencyMs)}</b><br>` +
+      `patas = <b>${legs}</b> (${active} agentes · ${k.conversations} conv.) · latido = <b>${tph.toFixed(1)} msg/h</b><br>` +
+      (S.M.sla ? `<span class="alert">núcleo rojo: SLA · ${S.M.slaReason}</span>` : 'núcleo índigo: SLA en orden');
+  }
+
+  if (EMBED) document.body.classList.add('embed');
+  window.addEventListener('message', (e) => {
+    if (e.origin !== location.origin) return;
+    if (e.data?.type === 'metrics') applyMetrics(e.data.data);
+  });
+  async function pullMetrics() {
+    try {
+      const r = await fetch(METRICS_URL, { cache: 'no-store' });
+      if (r.ok) applyMetrics(await r.json());
+    } catch (err) {
+      console.warn('metrics', err);
+    }
+  }
+
+  // ================= arranque =================
+  buildTabs();
+  S.memKiB = 12;
+  setMode('nano');
+  logFixed(clouds[0], 'recv', 'evento', 'telegram');
+  renderHud();
+  if (FEED) { pullFeed(true); setInterval(() => pullFeed(false), 10000); }
+  if (METRICS_URL) { pullMetrics(); setInterval(pullMetrics, 15000); }
+  if (EMBED && window.parent !== window) window.parent.postMessage({ type: 'flow-ready' }, location.origin);
+  requestAnimationFrame((t) => { last = t; frame(t); });
+})();
+</script>
+</body>
+</html>

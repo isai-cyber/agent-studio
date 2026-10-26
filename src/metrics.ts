@@ -1,0 +1,174 @@
+// Métricas por mensaje: tokens, coste, latencia por paso y ruta (tema, respuesta
+// libre, NanoClaw...). Cada turno se guarda como una línea JSON en
+// data/metrics/events.jsonl. Los datos de ejemplo van aparte, en demo.jsonl.
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { join } from 'node:path';
+import { ROOT } from './store.ts';
+
+const DIR = join(ROOT, 'data', 'metrics');
+const EVENTS = join(DIR, 'events.jsonl');
+const DEMO = join(DIR, 'demo.jsonl');
+
+// Precios en USD por millón de tokens. Configurables porque cambian con el tiempo:
+// revisa la página de precios de tu proveedor y ajústalos en .env.
+export const PRICES = {
+  input: Number(process.env.PRICE_INPUT_PER_M ?? 0.28),
+  cacheHit: Number(process.env.PRICE_CACHE_HIT_PER_M ?? 0.028),
+  output: Number(process.env.PRICE_OUTPUT_PER_M ?? 0.42),
+  ttsPer1kChars: Number(process.env.PRICE_TTS_PER_1K_CHARS ?? 0),
+  monthlyBudget: Number(process.env.MONTHLY_BUDGET_USD ?? 20),
+};
+
+export type Route = 'saludo' | 'tema' | 'generativa' | 'nanoclaw';
+export type Channel = 'ui' | 'api' | 'openai' | 'mcp';
+
+export interface TurnEvent {
+  type: 'turn';
+  ts: string;
+  agentId: string;
+  sessionId: string;
+  channel: Channel;
+  route: Route;
+  topic?: string;
+  tokens: { input: number; cacheHit: number; output: number; known: boolean };
+  costUsd: number;
+  latencyMs: { total: number; steps: Record<string, number> };
+  error?: string;
+  demo?: boolean;
+}
+
+export interface TtsEvent {
+  type: 'tts';
+  ts: string;
+  agentId?: string;
+  chars: number;
+  latencyMs: number;
+  costUsd: number;
+  demo?: boolean;
+}
+
+export type MetricEvent = TurnEvent | TtsEvent;
+
+interface TurnCtx {
+  input: number;
+  cacheHit: number;
+  output: number;
+  llmCalls: number;
+  steps: Record<string, number>;
+  route?: Route;
+}
+
+const als = new AsyncLocalStorage<TurnCtx>();
+
+export function costOf(input: number, cacheHit: number, output: number): number {
+  return ((input - cacheHit) * PRICES.input + cacheHit * PRICES.cacheHit + output * PRICES.output) / 1_000_000;
+}
+
+// Mide un paso del turno en curso (no hace nada fuera de un turno)
+export async function timed<T>(step: string, fn: () => Promise<T>): Promise<T> {
+  const ctx = als.getStore();
+  const start = performance.now();
+  try {
+    return await fn();
+  } finally {
+    if (ctx) ctx.steps[step] = (ctx.steps[step] ?? 0) + (performance.now() - start);
+  }
+}
+
+export function addUsage(u: { prompt_tokens?: number; completion_tokens?: number; prompt_cache_hit_tokens?: number } | undefined): void {
+  const ctx = als.getStore();
+  if (!ctx || !u) return;
+  ctx.input += u.prompt_tokens ?? 0;
+  ctx.cacheHit += u.prompt_cache_hit_tokens ?? 0;
+  ctx.output += u.completion_tokens ?? 0;
+  ctx.llmCalls++;
+}
+
+export function setRoute(route: Route): void {
+  const ctx = als.getStore();
+  if (ctx && (!ctx.route || route === 'nanoclaw' || (route === 'generativa' && ctx.route === 'saludo'))) ctx.route = route;
+}
+
+async function append(file: string, event: MetricEvent): Promise<void> {
+  await mkdir(DIR, { recursive: true });
+  await appendFile(file, `${JSON.stringify(event)}\n`, 'utf8');
+}
+
+// Ejecuta un turno midiendo todo lo que pasa dentro y lo registra al terminar
+export async function runTurn<T extends { sessionId: string; topic?: string }>(
+  meta: { agentId: string; channel: Channel },
+  fn: () => Promise<T>,
+): Promise<T> {
+  const ctx: TurnCtx = { input: 0, cacheHit: 0, output: 0, llmCalls: 0, steps: {} };
+  const start = performance.now();
+  let result: T | undefined;
+  let error: string | undefined;
+  try {
+    result = await als.run(ctx, fn);
+    return result;
+  } catch (err) {
+    error = (err as Error).message;
+    throw err;
+  } finally {
+    const steps = Object.fromEntries(Object.entries(ctx.steps).map(([k, v]) => [k, Math.round(v)]));
+    const event: TurnEvent = {
+      type: 'turn',
+      ts: new Date().toISOString(),
+      agentId: meta.agentId,
+      sessionId: result?.sessionId ?? 'error',
+      channel: meta.channel,
+      route: ctx.route ?? 'tema',
+      ...(result?.topic ? { topic: result.topic } : {}),
+      // Por NanoClaw no llegan cifras de tokens: se marcan como desconocidas
+      tokens: { input: ctx.input, cacheHit: ctx.cacheHit, output: ctx.output, known: ctx.route !== 'nanoclaw' },
+      costUsd: costOf(ctx.input, ctx.cacheHit, ctx.output),
+      latencyMs: { total: Math.round(performance.now() - start), steps },
+      ...(error ? { error } : {}),
+    };
+    append(EVENTS, event).catch((e) => console.warn('[metrics]', e.message));
+  }
+}
+
+export async function recordTts(agentId: string | undefined, chars: number, latencyMs: number): Promise<void> {
+  await append(EVENTS, {
+    type: 'tts',
+    ts: new Date().toISOString(),
+    ...(agentId ? { agentId } : {}),
+    chars,
+    latencyMs: Math.round(latencyMs),
+    costUsd: (chars / 1000) * PRICES.ttsPer1kChars,
+  }).catch((e) => console.warn('[metrics]', e.message));
+}
+
+// ---------- lectura ----------
+
+async function readJsonl(file: string): Promise<MetricEvent[]> {
+  if (!existsSync(file)) return [];
+  return (await readFile(file, 'utf8'))
+    .split('\n')
+    .filter(Boolean)
+    .flatMap((l) => {
+      try {
+        return [JSON.parse(l) as MetricEvent];
+      } catch {
+        return [];
+      }
+    });
+}
+
+export async function readEvents(): Promise<{ events: MetricEvent[]; demo: boolean }> {
+  const real = await readJsonl(EVENTS);
+  const demo = await readJsonl(DEMO);
+  return { events: [...real, ...demo.map((e) => ({ ...e, demo: true }))], demo: demo.length > 0 };
+}
+
+export async function clearDemo(): Promise<void> {
+  await rm(DEMO, { force: true });
+}
+
+export async function writeDemo(events: MetricEvent[]): Promise<void> {
+  await mkdir(DIR, { recursive: true });
+  await writeFile(DEMO, events.map((e) => JSON.stringify(e)).join('\n') + '\n', 'utf8');
+}

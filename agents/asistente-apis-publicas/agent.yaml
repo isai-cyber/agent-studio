@@ -1,0 +1,200 @@
+id: asistente-apis-publicas
+name: Asistente con APIs públicas
+icon: 🌐
+category:
+  function: Tecnologías de la información
+  useCase: Integraciones
+description: Clima, tipo de cambio y festivos con APIs reales (Open-Meteo, Frankfurter, Nager.Date), y un catálogo de 988 APIs públicas sin clave para recomendar integraciones.
+language: español
+instructions: |-
+  Eres un asistente práctico conectado a APIs públicas reales. Usa las acciones para el tiempo (primero geocodificar la ciudad y luego clima), el tipo de cambio y los días festivos. Da siempre la fuente del dato. Si te piden otra integración, recomienda APIs del catálogo de la base de conocimiento (todas sin clave y con HTTPS) y explica cómo llamarlas.
+  Reglas:
+  - Responde en el idioma del usuario (por defecto, español), breve y claro.
+  - Pide un dato cada vez. Si el usuario ya lo dio, no lo vuelvas a pedir.
+  - Antes de confirmar una reserva o compra, resume los datos y pide confirmación.
+  - No inventes disponibilidad, precios ni números de reserva: si no tienes el dato, dilo.
+  - Usa la base de conocimiento: el esquema de datos y las conversaciones de ejemplo muestran cómo resolver cada caso.
+greeting: ¡Hola! Puedo decirte el tiempo de una ciudad, el tipo de cambio entre monedas o los próximos festivos. ¿Qué necesitas?
+topics:
+  - name: Clima
+    description: Tiempo actual y previsión en una ciudad
+    triggers:
+      - qué tiempo hace
+      - el clima en
+      - va a llover
+      - temperatura en
+      - pronóstico del tiempo
+      - weather in
+    steps:
+      - type: question
+        prompt: ¿De qué ciudad?
+        variable: ciudad
+      - type: action
+        action: geocodificar
+        inputs:
+          ciudad: "{{ciudad}}"
+        saveAs: geo
+      - type: condition
+        if: geo.body.results
+        then:
+          - type: action
+            action: clima
+            inputs:
+              lat: "{{geo.body.results.0.latitude}}"
+              lon: "{{geo.body.results.0.longitude}}"
+            saveAs: tiempo
+          - type: message
+            text: "En {{geo.body.results.0.name}} ({{geo.body.results.0.country}}) ahora hay {{tiempo.body.current.temperature_2m}} °C, humedad del {{tiempo.body.current.relative_humidity_2m}} % y viento de {{tiempo.body.current.wind_speed_10m}} km/h. Mañana: entre {{tiempo.body.daily.temperature_2m_min.1}} y {{tiempo.body.daily.temperature_2m_max.1}} °C, con {{tiempo.body.daily.precipitation_probability_max.1}} % de probabilidad de lluvia."
+        else:
+          - type: message
+            text: No encontré la ciudad "{{ciudad}}". ¿Puedes escribirla de otra forma?
+  - name: Tipo de cambio
+    description: Cotización entre dos monedas
+    triggers:
+      - tipo de cambio
+      - cuánto está el dólar
+      - convertir moneda
+      - cotización del euro
+      - exchange rate
+    steps:
+      - type: question
+        prompt: ¿Moneda de origen?
+        variable: base
+        options:
+          - USD
+          - EUR
+          - MXN
+          - GBP
+          - BRL
+          - JPY
+      - type: question
+        prompt: ¿A qué moneda?
+        variable: destino
+        options:
+          - USD
+          - EUR
+          - MXN
+          - GBP
+          - BRL
+          - JPY
+      - type: action
+        action: tipo_de_cambio
+        inputs:
+          base: "{{base}}"
+          destino: "{{destino}}"
+        saveAs: fx
+      - type: message
+        text: "Tipo de cambio de referencia del BCE ({{fx.body.date}}): 1 {{base}} = {{fx.body.rates}}"
+  - name: Próximos festivos
+    description: Días festivos de un país
+    triggers:
+      - próximo festivo
+      - días festivos
+      - cuándo es puente
+      - feriados
+      - public holidays
+    steps:
+      - type: question
+        prompt: ¿De qué país? (código de 2 letras)
+        variable: pais
+        options:
+          - MX
+          - ES
+          - AR
+          - CO
+          - CL
+          - PE
+          - US
+      - type: action
+        action: proximos_festivos
+        inputs:
+          pais: "{{pais}}"
+        saveAs: fest
+      - type: message
+        text: "Próximos festivos en {{pais}}: {{fest.body.0.localName}} ({{fest.body.0.date}}), {{fest.body.1.localName}} ({{fest.body.1.date}}) y {{fest.body.2.localName}} ({{fest.body.2.date}})."
+actions:
+  - name: geocodificar
+    description: Busca una ciudad y devuelve su latitud, longitud y país (Open-Meteo Geocoding)
+    method: GET
+    url: https://geocoding-api.open-meteo.com/v1/search?name={{ciudad}}&count=1&language=es
+    parameters:
+      type: object
+      properties:
+        ciudad:
+          type: string
+          description: Nombre de la ciudad
+      required:
+        - ciudad
+  - name: clima
+    description: Tiempo actual y previsión de 3 días para unas coordenadas (Open-Meteo)
+    method: GET
+    url: https://api.open-meteo.com/v1/forecast?latitude={{lat}}&longitude={{lon}}&current=temperature_2m,relative_humidity_2m,wind_speed_10m,weather_code&daily=temperature_2m_max,temperature_2m_min,precipitation_probability_max&timezone=auto&forecast_days=3
+    parameters:
+      type: object
+      properties:
+        lat:
+          type: number
+          description: Latitud
+        lon:
+          type: number
+          description: Longitud
+      required:
+        - lat
+        - lon
+  - name: tipo_de_cambio
+    description: "Tipo de cambio de referencia del BCE entre monedas (Frankfurter). Opcional: amount para convertir una cantidad."
+    method: GET
+    url: https://api.frankfurter.dev/v1/latest?base={{base}}&symbols={{destino}}
+    parameters:
+      type: object
+      properties:
+        base:
+          type: string
+          description: Moneda origen ISO 4217, p. ej. USD
+        destino:
+          type: string
+          description: Moneda(s) destino separadas por coma, p. ej. EUR,MXN
+        amount:
+          type: number
+          description: Cantidad a convertir (opcional)
+      required:
+        - base
+        - destino
+  - name: proximos_festivos
+    description: Próximos días festivos de un país (Nager.Date)
+    method: GET
+    url: https://date.nager.at/api/v3/NextPublicHolidays/{{pais}}
+    parameters:
+      type: object
+      properties:
+        pais:
+          type: string
+          description: Código de país ISO 3166-1 alfa-2, p. ej. MX, ES, AR
+      required:
+        - pais
+  - name: festivos_del_anio
+    description: Todos los festivos de un país en un año (Nager.Date)
+    method: GET
+    url: https://date.nager.at/api/v3/PublicHolidays/{{anio}}/{{pais}}
+    parameters:
+      type: object
+      properties:
+        anio:
+          type: number
+          description: Año, p. ej. 2026
+        pais:
+          type: string
+          description: Código ISO alfa-2
+      required:
+        - anio
+        - pais
+knowledge:
+  - type: file
+    name: catalogo apis sin clave
+    path: knowledge/catalogo-apis-sin-clave.md
+  - type: file
+    name: fuentes
+    path: knowledge/fuentes.md
+voice:
+  enabled: true
+source: dataset

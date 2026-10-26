@@ -1,0 +1,333 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Agent Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" />
+  <link rel="icon" type="image/png" href="/favicon.png" />
+  <link rel="apple-touch-icon" href="/brand-logo.png" />
+  <link rel="stylesheet" href="/style.css" />
+</head>
+<body>
+  <div class="aurora" aria-hidden="true"><span></span><span></span><span></span></div>
+  <aside class="rail">
+    <img class="brand-logo" src="/brand-logo.png" alt="Agent Studio" title="Agent Studio" />
+    <nav>
+      <button data-view="home" class="active" title="Inicio" aria-label="Inicio">
+        <svg viewBox="0 0 24 24"><path d="M3 10.5 12 3l9 7.5V20a1 1 0 0 1-1 1h-5v-6H9v6H4a1 1 0 0 1-1-1z"/></svg>
+      </button>
+      <button data-view="agents" title="Mis agentes" aria-label="Mis agentes">
+        <svg viewBox="0 0 24 24"><rect x="4" y="7" width="16" height="12" rx="4"/><circle cx="9.5" cy="13" r="1.4"/><circle cx="14.5" cy="13" r="1.4"/><path d="M12 7V4m-2 0h4"/></svg>
+      </button>
+      <button data-view="catalog" title="Biblioteca de escenarios" aria-label="Biblioteca de escenarios">
+        <svg viewBox="0 0 24 24"><rect x="3.5" y="3.5" width="7" height="7" rx="2"/><rect x="13.5" y="3.5" width="7" height="7" rx="2"/><rect x="3.5" y="13.5" width="7" height="7" rx="2"/><rect x="13.5" y="13.5" width="7" height="7" rx="2"/></svg>
+      </button>
+      <button data-view="import" title="Importar de Copilot Studio" aria-label="Importar de Copilot Studio">
+        <svg viewBox="0 0 24 24"><path d="M12 15V4m0 0-4 4m4-4 4 4M5 14v4a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-4"/></svg>
+      </button>
+      <button data-view="flows" title="Automatizaciones" aria-label="Automatizaciones">
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="5" rx="1.5"/><rect x="14" y="10" width="7" height="5" rx="1.5"/><rect x="3" y="16" width="7" height="5" rx="1.5"/><path d="M10 5.5h2.5a1.5 1.5 0 0 1 1.5 1.5v5.5M14 12.5h-1.5a1.5 1.5 0 0 0-1.5 1.5v4.5H10"/></svg>
+      </button>
+      <button data-view="modules" title="Apps" aria-label="Apps">
+        <svg viewBox="0 0 24 24"><path d="M9 3h6v3a2 2 0 1 0 4 0V3h2v6h-3a2 2 0 1 0 0 4h3v8h-6v-3a2 2 0 1 0-4 0v3H3v-8h3a2 2 0 1 0 0-4H3V3h6z"/></svg>
+      </button>
+      <button data-view="metrics" title="Métricas" aria-label="Métricas">
+        <svg viewBox="0 0 24 24"><path d="M4 20V10m6 10V4m6 16v-7m4 7H3"/></svg>
+      </button>
+      <button data-view="connect" title="Conectar (API y MCP)" aria-label="Conectar (API y MCP)">
+        <svg viewBox="0 0 24 24"><path d="M9 7V3m6 4V3M7 7h10v4a5 5 0 0 1-10 0zM12 16v5"/></svg>
+      </button>
+    </nav>
+    <div id="user-menu" class="user-menu" hidden></div>
+    <div class="rail-status" tabindex="0" aria-label="Estado de los servicios">
+      <span class="dot"></span>
+      <div id="status" class="status"></div>
+    </div>
+  </aside>
+
+  <main>
+    <!-- Inicio -->
+    <section id="view-home" class="view active home">
+      <div class="home-wrap">
+        <h1 class="hello">Hola, ¿listo para <em>construir?</em></h1>
+        <p class="hello-sub">Describe lo que quieres y te dejo la automatización lista <span class="pill">+560 apps · webhooks · APIs · MCP</span></p>
+
+        <form id="quick-form" class="quick">
+          <span class="spark" aria-hidden="true">✦</span>
+          <input id="quick-input" autocomplete="off" placeholder="Describe qué quieres automatizar… ej. «Cuando llegue un pedido de Shopify avisa en Slack»" />
+          <button type="submit" class="primary">Crear</button>
+        </form>
+        <div class="quick-ideas" id="quick-ideas"></div>
+
+        <div class="create-grid">
+          <button class="create-card" data-go="new">
+            <div class="art art-agent" aria-hidden="true"><span class="beam"></span><span class="core"></span></div>
+            <div class="create-title">Agente <span class="pill-sm">desde cero</span></div>
+            <p>Escribe qué quieres que haga y empieza a probarlo al instante.</p>
+          </button>
+          <button class="create-card" data-go="catalog">
+            <div class="art art-library" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i></div>
+            <div class="create-title">Desde plantilla <span class="pill-sm">19 escenarios</span></div>
+            <p>Elige por función o industria: ventas, soporte, RR. HH., salud…</p>
+          </button>
+          <button class="create-card" data-go="import">
+            <div class="art art-import" aria-hidden="true"><span class="win"></span><span class="arrow"></span></div>
+            <div class="create-title">Importar <span class="pill-sm">Copilot Studio</span></div>
+            <p>Sube la solución exportada y conserva temas e instrucciones.</p>
+          </button>
+        </div>
+
+        <button class="other" data-go="blank">
+          <div>
+            <div class="create-title">Otras formas de crear</div>
+            <p>Agente en blanco editando el YAML: temas, conocimiento, acciones y voz.</p>
+          </div>
+          <span class="arrow-r">→</span>
+        </button>
+
+        <div class="recent">
+          <h3>Agentes recientes</h3>
+          <div id="recent-list" class="recent-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Automatizaciones -->
+    <section id="view-flows" class="view">
+      <div id="flows-list">
+        <header class="view-head">
+          <h1>Automatizaciones</h1>
+          <button id="flow-new" class="primary">+ Nuevo flujo</button>
+        </header>
+        <p class="muted">Conecta tus agentes con otras apps: elige qué inicia la automatización y qué debe pasar después.</p>
+        <h3>Empieza con una plantilla</h3>
+        <div id="flows-templates" class="tpl-row"></div>
+        <h3>Tus automatizaciones</h3>
+        <div id="flows-grid" class="grid"></div>
+      </div>
+      <div id="flows-editor" hidden>
+        <div class="zap-top">
+          <button id="flow-back" class="icon-btn" title="Volver">‹</button>
+          <span class="pencil" aria-hidden="true">✎</span>
+          <input id="flow-name" class="zap-title-input" aria-label="Nombre de la automatización" />
+          <span id="flow-state" class="flow-state"></span>
+          <span id="run-bar" class="run-bar"></span>
+          <span id="flow-msg" class="muted small"></span>
+          <button id="flow-delete" class="ghost">Eliminar</button>
+          <button id="flow-publish" class="primary">PUBLICAR</button>
+        </div>
+        <div id="zap" class="zap"></div>
+      </div>
+    </section>
+
+    <!-- Módulos -->
+    <section id="view-modules" class="view">
+      <div class="mk-hero">
+        <h1>Marketplace de apps</h1>
+        <p>Conecta tus agentes y automatizaciones con <b id="mk-count">…</b> apps: integraciones nativas, APIs REST y servidores MCP.</p>
+        <label class="mk-search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+          <input id="mod-search" placeholder="Buscar apps, acciones o categorías…" autocomplete="off" aria-label="Buscar apps" />
+        </label>
+        <div id="mk-tabs" class="mk-tabs" role="tablist"></div>
+      </div>
+      <div class="mk-layout">
+        <aside id="mk-cats" class="mk-side"></aside>
+        <div class="mk-main">
+          <div class="mk-bar">
+            <span id="mk-result" class="muted"></span>
+            <label class="muted small">Ordenar
+              <select id="mk-sort"><option value="pop">Destacadas</option><option value="az">A–Z</option><option value="ops">Más acciones</option></select>
+            </label>
+          </div>
+          <div id="modules-errors"></div>
+          <div id="modules-grid" class="mk-grid"></div>
+          <p id="mk-empty" class="muted" hidden>No hay coincidencias. Prueba <b>MCP (cualquier servidor)</b> o <b>Cualquier API (OpenAPI)</b>: conectan con casi cualquier servicio.</p>
+        </div>
+      </div>
+      <details class="card pad mk-install">
+        <summary>Añadir un módulo de la comunidad</summary>
+        <p class="muted">Pega la URL de un archivo de módulo (<code>.js</code> o <code>.ts</code>, por ejemplo el enlace "raw" de GitHub). Para crear el tuyo, copia <code>modules/_plantilla</code> y sigue <code>MODULES.md</code>. El catálogo de APIs y MCP se regenera con <code>npm run build:catalog</code>.</p>
+        <div class="row" style="margin:0"><input id="mod-url" placeholder="https://raw.githubusercontent.com/usuario/repo/main/mi-modulo.js" /><button id="mod-install" class="primary">Instalar</button><button id="mod-reload" class="ghost">Recargar módulos</button></div>
+        <span id="mod-msg" class="muted"></span>
+      </details>
+      <div id="mk-detail" class="mk-detail" hidden></div>
+    </section>
+
+    <!-- Métricas -->
+    <section id="view-metrics" class="view">
+      <header class="view-head">
+        <h1>Métricas</h1>
+        <div class="seg" role="group" aria-label="Periodo">
+          <button data-range="24h">24 h</button>
+          <button data-range="7d" class="active">7 días</button>
+          <button data-range="30d">30 días</button>
+        </div>
+      </header>
+      <div id="m-banner"></div>
+      <div id="m-kpis" class="kpis"></div>
+      <div class="m-grid">
+        <article class="card chart-card m-wide live-card">
+          <div class="chart-head"><div><h3>Agente en vivo</h3><p class="muted">La araña recorre el flujo de NanoClaw según estas métricas: tarda más donde hay más latencia, se mueve según la p50, sus patas son agentes y conversaciones, y su núcleo se pone rojo si se rompe el SLA.</p></div></div>
+          <iframe id="live-frame" title="Agente en vivo según las métricas" src="/nanoclaw-flow.html?embed=1"></iframe>
+        </article>
+        <article class="card chart-card m-wide" data-chart="tokens">
+          <div class="chart-head"><div><h3>Tokens en el tiempo</h3><p class="muted">Entrada + salida por agente</p></div><button class="ghost tbl-toggle">Ver tabla</button></div>
+          <div class="legend"></div><div class="plot"></div><div class="tbl" hidden></div>
+        </article>
+        <article class="card chart-card" data-chart="cost">
+          <div class="chart-head"><div><h3>Coste acumulado del mes</h3><p class="muted">Frente al presupuesto mensual</p></div><button class="ghost tbl-toggle">Ver tabla</button></div>
+          <div class="status-line"></div><div class="plot"></div><div class="tbl" hidden></div>
+        </article>
+        <article class="card chart-card" data-chart="ranking">
+          <div class="chart-head"><div><h3>Coste por agente</h3><p class="muted">Ordenado de mayor a menor</p></div><button class="ghost tbl-toggle">Ver tabla</button></div>
+          <div class="plot"></div><div class="tbl" hidden></div>
+        </article>
+        <article class="card chart-card" data-chart="latency">
+          <div class="chart-head"><div><h3>Latencia por paso</h3><p class="muted">Tiempo medio de cada fase de una respuesta</p></div><button class="ghost tbl-toggle">Ver tabla</button></div>
+          <div class="plot"></div><div class="tbl" hidden></div>
+        </article>
+        <article class="card chart-card" data-chart="outcome">
+          <div class="chart-head"><div><h3>Coste por resultado</h3><p class="muted">Cada punto es una conversación</p></div><button class="ghost tbl-toggle">Ver tabla</button></div>
+          <div class="legend"></div><div class="plot"></div><div class="tbl" hidden></div>
+        </article>
+      </div>
+      <p class="muted m-foot" id="m-foot"></p>
+      <div id="m-tip" class="m-tip" hidden></div>
+    </section>
+
+    <!-- Conectar -->
+    <section id="view-connect" class="view">
+      <header class="view-head"><h1>Conectar con otras apps</h1></header>
+      <p class="muted">Usa tus agentes desde cualquier app con la API REST, el endpoint compatible con OpenAI o MCP (Claude Desktop, Cursor, opencode, n8n…).</p>
+      <div class="card pad">
+        <h3>Clave de API</h3>
+        <div class="row" style="margin:0">
+          <input id="api-key" readonly />
+          <button id="copy-key" class="ghost">Copiar</button>
+          <button id="rotate-key" class="danger">Regenerar</button>
+        </div>
+        <p class="muted">Envíala como <code>Authorization: Bearer &lt;clave&gt;</code> o <code>X-Api-Key</code>. No la compartas: da acceso a todos tus agentes.</p>
+      </div>
+      <div class="connect-grid">
+        <div class="card pad"><h3>API REST</h3><p class="muted">Documentación: <a id="openapi-link" target="_blank">/v1/openapi.json</a></p><pre id="snip-rest" class="result snip"></pre></div>
+        <div class="card pad"><h3>Compatible con OpenAI</h3><p class="muted">Base URL <code>/v1</code> y <code>model</code> = id del agente. Sirve para n8n, Make, LangChain, apps de chat…</p><pre id="snip-openai" class="result snip"></pre></div>
+        <div class="card pad"><h3>MCP por HTTP</h3><p class="muted">Para clientes que admiten servidores MCP remotos.</p><pre id="snip-mcp-http" class="result snip"></pre></div>
+        <div class="card pad"><h3>MCP por stdio</h3><p class="muted">Claude Desktop, Cursor u opencode lanzan el proceso ellos mismos.</p><pre id="snip-mcp-stdio" class="result snip"></pre></div>
+      </div>
+    </section>
+
+    <!-- Mis agentes -->
+    <section id="view-agents" class="view">
+      <header class="view-head">
+        <h1>Mis agentes</h1>
+        <button id="new-agent" class="primary">+ Nuevo agente</button>
+      </header>
+      <div id="agents-grid" class="grid"></div>
+    </section>
+
+    <!-- Catálogo -->
+    <section id="view-catalog" class="view">
+      <header class="view-head"><h1>Biblioteca de escenarios</h1></header>
+      <p class="muted">Encuentra tu función o industria y crea un agente a partir de una plantilla.</p>
+      <h3>Funciones</h3>
+      <div id="fn-chips" class="chips"></div>
+      <h3>Industrias</h3>
+      <div id="ind-chips" class="chips"></div>
+      <div id="catalog-grid" class="grid"></div>
+    </section>
+
+    <!-- Importar -->
+    <section id="view-import" class="view">
+      <header class="view-head"><h1>Importar de Copilot Studio</h1></header>
+      <div class="card pad">
+        <h3>1. Solución completa (.zip)</h3>
+        <p class="muted">En Copilot Studio: agrega tu agente a una <b>Solución</b> → en Power Apps ve a <b>Soluciones → Exportar</b> (no administrada). Sube aquí el .zip.</p>
+        <input type="file" id="zip-input" accept=".zip" />
+        <button id="zip-upload" class="primary">Importar solución</button>
+      </div>
+      <div class="card pad">
+        <h3>2. Tema suelto (YAML)</h3>
+        <p class="muted">En un tema de Copilot Studio: menú <b>⋯ → Abrir editor de código</b>, copia todo y pégalo aquí.</p>
+        <input id="topic-agent-name" placeholder="Nombre del agente (nuevo)" />
+        <textarea id="topic-yaml" rows="12" placeholder="kind: AdaptiveDialog&#10;beginDialog:&#10;  kind: OnRecognizedIntent&#10;  ..."></textarea>
+        <button id="topic-import" class="primary">Importar tema</button>
+      </div>
+      <pre id="import-result" class="result"></pre>
+    </section>
+
+    <!-- Detalle de agente -->
+    <section id="view-agent" class="view">
+      <header class="view-head">
+        <button id="back" class="ghost">← Volver</button>
+        <h1 id="agent-title"></h1>
+        <div class="tabs">
+          <button data-tab="chat" class="active">Probar</button>
+          <button data-tab="editor">Editar</button>
+        </div>
+        <button id="delete-agent" class="danger">Eliminar</button>
+      </header>
+
+      <div id="tab-chat" class="tab active">
+        <div class="chat">
+          <div id="messages" class="messages"></div>
+          <div id="options" class="chips"></div>
+          <form id="chat-form" class="composer">
+            <button type="button" id="mic" title="Hablar">🎤</button>
+            <input id="chat-input" autocomplete="off" placeholder="Escribe un mensaje…" />
+            <button type="submit" class="primary">Enviar</button>
+          </form>
+          <div class="chat-tools">
+            <label><input type="checkbox" id="speak" /> Responder con voz (ElevenLabs)</label>
+            <button id="reset" class="ghost">Reiniciar conversación</button>
+          </div>
+        </div>
+      </div>
+
+      <div id="tab-editor" class="tab">
+        <p class="muted">Edita el agente en YAML: <code>instructions</code>, <code>topics</code> (temas con pasos), <code>knowledge</code>, <code>actions</code> y <code>voice.voiceId</code>.</p>
+        <textarea id="yaml" rows="30" spellcheck="false"></textarea>
+        <div class="row">
+          <button id="save-yaml" class="primary">Guardar</button>
+          <button id="sync-nanoclaw" class="ghost" hidden>Sincronizar con NanoClaw</button>
+          <button id="load-voices" class="ghost">Ver voces de ElevenLabs</button>
+          <span id="save-msg" class="muted"></span>
+        </div>
+        <pre id="voices" class="result"></pre>
+      </div>
+    </section>
+  </main>
+
+  <!-- Inicio de sesión / registro -->
+  <div id="auth" class="auth" hidden></div>
+
+  <!-- Onboarding: de una frase a la automatización -->
+  <div id="onboard" class="onboard" hidden>
+    <div class="onboard-card">
+      <img class="brand-logo onboard-logo" src="/brand-logo.png" alt="" />
+      <h2>Creando tu automatización</h2>
+      <p id="onboard-text" class="muted"></p>
+      <ol id="onboard-steps" class="onboard-steps"></ol>
+    </div>
+  </div>
+
+  <!-- Asistente de automatización -->
+  <button id="asst-fab" class="asst-fab" title="Asistente de automatización">✨ Asistente</button>
+  <aside id="asst" class="asst" hidden aria-label="Asistente de automatización">
+    <header class="asst-head">
+      <div><b>Asistente de automatización</b><small>Conecta apps, webhooks, APIs y MCP hablando</small></div>
+      <button id="asst-close" class="icon-btn" title="Cerrar">✕</button>
+    </header>
+    <div id="asst-messages" class="asst-messages"></div>
+    <div id="asst-sugs" class="asst-sugs"></div>
+    <form id="asst-form" class="asst-form">
+      <input id="asst-input" autocomplete="off" placeholder="Ej. «añade un aviso por Slack» o «publícalo»" />
+      <button type="submit" class="primary">Enviar</button>
+    </form>
+  </aside>
+
+  <script src="/app.js" type="module"></script>
+</body>
+</html>

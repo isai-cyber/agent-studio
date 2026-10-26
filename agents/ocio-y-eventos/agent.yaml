@@ -1,0 +1,223 @@
+id: ocio-y-eventos
+name: Ocio y eventos
+icon: 🎟️
+category:
+  industry: Medios y entretenimiento
+  useCase: Entradas y recomendaciones
+description: Eventos, conciertos, cine, música y lugares de interés. Entrenado con SGD, MultiWOZ 2.2 y Taskmaster-2.
+language: español
+instructions: |-
+  Eres el asistente de ocio. Recomiendas eventos, conciertos, películas, música y lugares que visitar, y ayudas a comprar entradas.
+  Reglas:
+  - Responde en el idioma del usuario (por defecto, español), breve y claro.
+  - Pide un dato cada vez. Si el usuario ya lo dio, no lo vuelvas a pedir.
+  - Antes de confirmar una reserva o compra, resume los datos y pide confirmación.
+  - No inventes disponibilidad, precios ni números de reserva: si no tienes el dato, dilo.
+  - Usa la base de conocimiento: el esquema de datos y las conversaciones de ejemplo muestran cómo resolver cada caso.
+greeting: ¡Hola! ¿Te apetece un concierto, cine o algún plan?
+topics:
+  - name: Buscar eventos
+    description: Find events in a given city
+    triggers:
+      - buscar conciertos
+      - qué eventos hay
+      - planes para el fin de semana
+    steps:
+      - type: question
+        prompt: ¿Qué tipo de cocina?
+        variable: category
+        options:
+          - Music
+          - Sports
+      - type: question
+        prompt: ¿En qué ciudad?
+        variable: city_of_event
+      - type: message
+        text: "Busco opciones con estos datos: qué tipo de cocina: {{category}} · qué ciudad: {{city_of_event}}. ¿Quieres que te recomiende alguna?"
+  - name: Comprar entradas
+    description: Buy tickets for an event
+    triggers:
+      - comprar entradas
+      - quiero entradas para el concierto
+    steps:
+      - type: question
+        prompt: ¿Qué evento?
+        variable: event_name
+      - type: question
+        prompt: ¿Para cuántas personas?
+        variable: number_of_seats
+      - type: question
+        prompt: ¿Para qué fecha?
+        variable: date
+      - type: question
+        prompt: ¿En qué ciudad?
+        variable: city_of_event
+      - type: message
+        text: "Perfecto. Resumen de tu solicitud (comprar entradas): qué evento: {{event_name}} · cuántas personas: {{number_of_seats}} · qué fecha: {{date}} · qué ciudad: {{city_of_event}}. La dejo registrada y te confirmo en breve."
+  - name: Get Event Dates
+    description: Get dates on which a given event is taking place
+    triggers: []
+    steps:
+      - type: question
+        prompt: ¿Qué evento?
+        variable: event_name
+      - type: question
+        prompt: ¿En qué ciudad?
+        variable: city
+      - type: message
+        text: "Busco opciones con estos datos: qué evento: {{event_name}} · qué ciudad: {{city}}. ¿Quieres que te recomiende alguna?"
+  - name: Buscar películas
+    description: Find movies by genre and optionally director
+    triggers:
+      - qué películas hay
+      - buscar película
+    steps:
+      - type: question
+        prompt: ¿Qué género?
+        variable: genre
+      - type: message
+        text: "Busco opciones con estos datos: qué género: {{genre}}. ¿Quieres que te recomiende alguna?"
+  - name: Reproducir película
+    description: Play the selected movie
+    triggers:
+      - Now only i put my sons to sleep and i have lot of time to relax . will you find a movie for me to watch?
+      - I want to watch a movie.
+      - I want to watch the movie The Mustang.
+      - "I want to watch How to Train Your Dragon: The Hidden World now if possible."
+      - I would really like to watch a movie.
+      - I would like to watch a movie.
+      - I want to see a movie now.
+      - Im would like to watch a movie now. I wish to watch Citizen Kane.
+      - I would like to see the movie now.
+    steps:
+      - type: question
+        prompt: ¿Qué título?
+        variable: title
+      - type: message
+        text: "Perfecto. Resumen de tu solicitud (reproducir película): qué título: {{title}}. La dejo registrada y te confirmo en breve."
+  - name: Comprar entradas de cine
+    description: Buy movie tickets for a particular show
+    triggers: []
+    steps:
+      - type: question
+        prompt: ¿Qué película?
+        variable: movie_name
+      - type: question
+        prompt: ¿Cuántas entradas?
+        variable: number_of_tickets
+      - type: question
+        prompt: ¿Qué día?
+        variable: show_date
+      - type: question
+        prompt: ¿En qué ciudad o zona?
+        variable: location
+      - type: question
+        prompt: ¿A qué hora?
+        variable: show_time
+      - type: question
+        prompt: ¿Qué formato (2D, 3D, IMAX)?
+        variable: show_type
+        options:
+          - regular
+          - 3d
+          - imax
+      - type: message
+        text: "Perfecto. Resumen de tu solicitud (comprar entradas de cine): qué película: {{movie_name}} · cuántas entradas: {{number_of_tickets}} · qué día: {{show_date}} · qué ciudad o zona: {{location}} · qué hora: {{show_time}} · qué formato (2d, 3d, imax): {{show_type}}. La dejo registrada y te confirmo en breve."
+  - name: Horarios de cine
+    description: Get show times for a movie at a location on a given date
+    triggers:
+      - horarios del cine
+    steps:
+      - type: question
+        prompt: ¿Qué película?
+        variable: movie_name
+      - type: question
+        prompt: ¿En qué ciudad o zona?
+        variable: location
+      - type: question
+        prompt: ¿Qué día?
+        variable: show_date
+      - type: message
+        text: "Busco opciones con estos datos: qué película: {{movie_name}} · qué ciudad o zona: {{location}} · qué día: {{show_date}}. ¿Quieres que te recomiende alguna?"
+  - name: Buscar canción
+    description: Search for a song
+    triggers: []
+    steps:
+      - type: question
+        prompt: ¿Qué género?
+        variable: genre
+      - type: question
+        prompt: ¿De qué artista?
+        variable: artist
+      - type: question
+        prompt: ¿Qué álbum?
+        variable: album
+      - type: message
+        text: "Busco opciones con estos datos: qué género: {{genre}} · qué artista: {{artist}} · qué álbum: {{album}}. ¿Quieres que te recomiende alguna?"
+  - name: Reproducir canción
+    description: Play the selected song on the device
+    triggers: []
+    steps:
+      - type: question
+        prompt: ¿Qué canción?
+        variable: song_name
+      - type: message
+        text: "Perfecto. Resumen de tu solicitud (reproducir canción): qué canción: {{song_name}}. La dejo registrada y te confirmo en breve."
+  - name: Buscar música
+    description: Search for a song based on the name and optionally other attributes
+    triggers: []
+    steps:
+      - type: question
+        prompt: ¿Qué género?
+        variable: genre
+      - type: question
+        prompt: ¿De qué artista?
+        variable: artist
+      - type: question
+        prompt: ¿Qué álbum?
+        variable: album
+      - type: message
+        text: "Busco opciones con estos datos: qué género: {{genre}} · qué artista: {{artist}} · qué álbum: {{album}}. ¿Quieres que te recomiende alguna?"
+  - name: Reproducir
+    description: Play a song by its name and optionally artist
+    triggers: []
+    steps:
+      - type: question
+        prompt: ¿Qué canción?
+        variable: song_name
+      - type: message
+        text: "Perfecto. Resumen de tu solicitud (reproducir): qué canción: {{song_name}}. La dejo registrada y te confirmo en breve."
+  - name: Buscar atracciones
+    description: Browse attractions in a given city
+    triggers:
+      - qué visitar
+      - lugares turísticos
+      - Hi, I'm traveling to Cambridge soon and am looking forward to seeing some local tourist attractions.
+      - Can you help me book a table at a chinese restaurant that's in the centre of town?
+      - I am getting ready to go off to college. I thought while I was in town maybe I could visit one.
+      - What fun places can I visit in the East?
+      - I am looking for a place to go in the centre, of type multiple sports.
+      - Hi, I need a moderate price range restaurant in the centre of town.
+      - Hi, I am planning a trip and could use some help with a particular attraction.
+      - Can you help me find a place to go on the east side of town where I can enjoy multiple sports? Thanks.
+      - Can you find me an expensive restaurant in the north?
+      - Hello, do you have any information regarding interesting theatres to visit in the centre of town?
+    steps:
+      - type: question
+        prompt: ¿En qué ciudad o zona?
+        variable: location
+      - type: message
+        text: "Busco opciones con estos datos: qué ciudad o zona: {{location}}. ¿Quieres que te recomiende alguna?"
+knowledge:
+  - type: file
+    name: esquema de datos
+    path: knowledge/esquema-de-datos.md
+  - type: file
+    name: conversaciones de ejemplo
+    path: knowledge/conversaciones-de-ejemplo.md
+  - type: file
+    name: fuentes
+    path: knowledge/fuentes.md
+voice:
+  enabled: true
+source: dataset

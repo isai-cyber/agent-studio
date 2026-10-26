@@ -1,0 +1,111 @@
+id: reservas-hoteles
+name: Reservas de hoteles
+icon: 🏨
+category:
+  function: Servicio al Cliente
+  industry: Medios y entretenimiento
+  useCase: Reservas
+description: Busca alojamiento y gestiona reservas de hotel. Entrenado con SGD, MultiWOZ 2.2 y Taskmaster-2.
+language: español
+instructions: |-
+  Eres el asistente de reservas de hotel. Ayudas a encontrar alojamiento (ciudad, zona, estrellas, precio, wifi, aparcamiento) y a reservar (fecha de entrada, noches, personas, habitaciones).
+  Reglas:
+  - Responde en el idioma del usuario (por defecto, español), breve y claro.
+  - Pide un dato cada vez. Si el usuario ya lo dio, no lo vuelvas a pedir.
+  - Antes de confirmar una reserva o compra, resume los datos y pide confirmación.
+  - No inventes disponibilidad, precios ni números de reserva: si no tienes el dato, dilo.
+  - Usa la base de conocimiento: el esquema de datos y las conversaciones de ejemplo muestran cómo resolver cada caso.
+greeting: ¡Hola! ¿En qué ciudad buscas alojamiento?
+topics:
+  - name: Reservar hotel
+    description: Reserve a selected hotel for given dates
+    triggers:
+      - reservar hotel
+      - quiero reservar una habitación
+      - reserva de hotel para el fin de semana
+      - Can you book a hotel for me? I would like a 3 star hotel or greater in downtown Cambridge for tonight for 2 people.
+    steps:
+      - type: question
+        prompt: ¿Qué hotel?
+        variable: hotel_name
+      - type: question
+        prompt: ¿Qué día entras?
+        variable: check_in_date
+      - type: question
+        prompt: ¿Cuántos días?
+        variable: number_of_days
+      - type: question
+        prompt: ¿A dónde vas?
+        variable: destination
+      - type: message
+        text: "Perfecto. Resumen de tu solicitud (reservar hotel): qué hotel: {{hotel_name}} · qué día entras: {{check_in_date}} · cuántos días: {{number_of_days}} · dónde vas: {{destination}}. La dejo registrada y te confirmo en breve."
+  - name: Buscar hotel
+    description: Find a hotel at a given location
+    triggers:
+      - buscar hotel
+      - busco hotel
+      - necesito alojamiento
+      - hotel con wifi y parking
+      - busco un hotel barato
+      - i need a place to dine in the center thats expensive
+      - Guten Tag, I am staying overnight in Cambridge and need a place to sleep. I need free parking and internet.
+      - Hi there! Can you give me some info on Cityroomz?
+      - I am looking for a hotel named alyesbray lodge guest house.
+      - I'm looking for a places to go and see during my upcoming trip to Cambridge.
+      - I need a place to stay that has free wifi.
+      - I am looking for a high priced hotel in the north side of town
+      - I'm looking for a hotel, can you help?
+      - I will be staying in Cambridge. I need a hotel with wifi.
+      - I would like to find a cheap hotel to stay at where there is free parking. Do you have any suggestions?
+    steps:
+      - type: question
+        prompt: ¿A dónde vas?
+        variable: destination
+      - type: message
+        text: "Busco opciones con estos datos: dónde vas: {{destination}}. ¿Quieres que te recomiende alguna?"
+  - name: Book House
+    description: Book the selected house for given dates and number of adults
+    triggers: []
+    steps:
+      - type: question
+        prompt: ¿En qué zona buscas vivienda?
+        variable: where_to
+      - type: question
+        prompt: ¿Cuántos adultos?
+        variable: number_of_adults
+        options:
+          - "1"
+          - "2"
+          - "3"
+          - "4"
+          - "5"
+      - type: question
+        prompt: ¿Qué día entras?
+        variable: check_in_date
+      - type: question
+        prompt: ¿Qué día sales?
+        variable: check_out_date
+      - type: message
+        text: "Perfecto. Resumen de tu solicitud (book house): qué zona buscas vivienda: {{where_to}} · cuántos adultos: {{number_of_adults}} · qué día entras: {{check_in_date}} · qué día sales: {{check_out_date}}. La dejo registrada y te confirmo en breve."
+  - name: Search House
+    description: Find a house at a given location
+    triggers: []
+    steps:
+      - type: question
+        prompt: ¿En qué zona buscas vivienda?
+        variable: where_to
+      - type: message
+        text: "Busco opciones con estos datos: qué zona buscas vivienda: {{where_to}}. ¿Quieres que te recomiende alguna?"
+knowledge:
+  - type: file
+    name: esquema de datos
+    path: knowledge/esquema-de-datos.md
+  - type: file
+    name: conversaciones de ejemplo
+    path: knowledge/conversaciones-de-ejemplo.md
+  - type: file
+    name: fuentes
+    path: knowledge/fuentes.md
+voice:
+  enabled: true
+source: dataset
