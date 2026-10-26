@@ -124,3 +124,25 @@ los archivos que se tocan en cada fase.
 ### Fase 6 · Pruebas y documentación
 - `test/*.test.ts` (nuevos, `node --test`).
 - `README.md`, `FEATURES.md` (nuevo), `.env.example`.
+
+## 5. Estado al terminar y pendientes
+
+Todas las fases están hechas y con pruebas (`npm test`: 47 pruebas; las de
+empresas, permisos y módulos usan MariaDB). Queda fuera de esta tarea o pendiente:
+
+- **La lógica de cada módulo** (CRM, inventario…): solo están su definición, sus
+  permisos y su aplicación. Ver `FEATURES.md`.
+- **Límites de conversaciones al mes y de mensajes de campaña**: se guardan en el
+  plan y se muestra el consumo, pero no se cortan todavía; es trabajo del módulo
+  `usage_billing`. Sí se aplican los límites de usuarios y de agentes.
+- **Peticiones a la red interna (SSRF)**: el conocimiento por URL, las acciones
+  HTTP de los agentes y los módulos HTTP/OpenAPI pueden llamar a cualquier URL,
+  también a servicios internos del servidor. Ya pasaba antes, pero con varias
+  empresas conviene limitarlo (lista de bloqueo de IPs privadas).
+- **Varias instancias del servidor**: las sesiones de chat y las cachés de
+  permisos viven en memoria; con más de un proceso habría que compartirlas.
+- **Correo**: solo Resend; sin él, las invitaciones se comparten por enlace.
+  Tampoco hay recuperación de contraseña.
+- **Eliminar empresa** es una baja lógica (no se purgan datos).
+- **NanoClaw**: los agentes ya enlazados conservan su carpeta antigua hasta que
+  se vuelven a sincronizar.

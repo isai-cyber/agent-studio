@@ -21,7 +21,9 @@ Plataforma propia de agentes, alternativa a Copilot Studio: **DeepSeek** como mo
 cp .env.example .env   # pon DEEPSEEK_API_KEY, ELEVENLABS_API_KEY y los datos de MariaDB (DB_*)
 npm install
 npm run build:datasets # opcional: descarga los datasets y regenera el conocimiento de los agentes
-npm start              # http://localhost:3000 (la primera cuenta que crees será la de administrador)
+npm run migrate:tenancy # solo si vienes de una versión sin empresas: respalda y migra tus datos a la empresa Default
+npm start              # http://localhost:3000 (la primera cuenta será Propietaria de la empresa Default y superadmin)
+npm test               # pruebas (las de permisos y empresas usan MariaDB: ver test/_helpers.ts)
 ```
 
 ## Qué incluye
@@ -41,7 +43,7 @@ npm start              # http://localhost:3000 (la primera cuenta que crees ser�
 2. En Power Apps → **Soluciones → Exportar** (no administrada).
 3. En la interfaz, ve a **Importar de Copilot Studio** y sube el .zip; o desde la terminal: `npm run import -- Solucion.zip`.
 
-Lo que no se puede traducir automáticamente (flujos de Power Automate, SharePoint, tarjetas adaptativas) sale en el informe como "Revisar" y se marca en el agente con `[IMPORT]`. El YAML original de cada componente se guarda en `agents/<id>/import/`.
+Lo que no se puede traducir automáticamente (flujos de Power Automate, SharePoint, tarjetas adaptativas) sale en el informe como "Revisar" y se marca en el agente con `[IMPORT]`. El YAML original de cada componente se guarda en `agents/<empresa>/<id>/import/`. Por línea de comandos: `npm run import -- solucion.zip --tenant <id>` (sin `--tenant`, en la empresa Default).
 
 ## Backend NanoClaw + opencode
 
@@ -61,7 +63,7 @@ onecli secrets create --name "DeepSeek" --type generic --value TU_CLAVE \
 
 ## Conectar con otras apps (API REST y MCP)
 
-La clave de API se genera en `data/api-key` (o define `AGENT_STUDIO_API_KEY`). Envíala como `Authorization: Bearer <clave>` o `X-Api-Key`. En la interfaz, la pantalla **Conectar** tiene la clave y ejemplos listos para copiar.
+Las claves de API son **por empresa** y se crean en **Configuración → Claves de API** con sus *scopes* (los permisos que tendrá la clave; nunca más que los tuyos). Se ven una sola vez y se pueden revocar. Envíala como `Authorization: Bearer <clave>` o `X-Api-Key`. La pantalla **Conectar** tiene ejemplos listos para copiar. `AGENT_STUDIO_API_KEY` (y, sin MariaDB, `data/api-key`) siguen funcionando como clave de la empresa Default con todos los permisos. Para `npm run mcp` (stdio) define `AGENT_STUDIO_MCP_KEY` con una clave de tu empresa.
 
 | Qué | Dónde |
 |---|---|
@@ -76,7 +78,7 @@ La API interna `/api/*` es solo para la interfaz local y no lleva autenticación
 
 ## Métricas
 
-Cada mensaje se registra en `data/metrics/events.jsonl`: tokens (entrada, caché, salida), coste estimado, latencia de cada paso (clasificar, conocimiento, modelo, acciones, NanoClaw, voz) y ruta (saludo, tema, respuesta libre, NanoClaw), además del canal (interfaz, API, OpenAI, MCP).
+Cada mensaje se registra en `data/tenants/<empresa>/metrics/events.jsonl`: tokens (entrada, caché, salida), coste estimado, latencia de cada paso (clasificar, conocimiento, modelo, acciones, NanoClaw, voz) y ruta (saludo, tema, respuesta libre, NanoClaw), además del canal (interfaz, API, OpenAI, MCP).
 
 La pantalla **Métricas** muestra: tokens en el tiempo por agente, coste acumulado del mes frente al presupuesto, coste por agente, latencia por paso y coste por resultado de cada conversación. Cada gráfica tiene vista de tabla. Los mismos datos están en `GET /v1/metrics?range=24h|7d|30d`.
 
@@ -92,9 +94,9 @@ En **Métricas** está la tarjeta **Agente en vivo**: la misma araña, pero guia
 
 **Automatizaciones** es un editor de flujos de arrastrar y soltar: un disparador (manual, webhook, programado, "un agente responde" o sondeo) y una serie de acciones. Las salidas de cada paso se usan en los siguientes con `{{trigger.…}}` y `{{steps.<id>.…}}`; el botón **Probar** muestra el resultado de cada paso y las variables disponibles.
 
-- Webhooks públicos: `POST /hooks/<id-del-flujo>` (con `?token=` si el disparador tiene secreto).
-- Ejecutar por API: `POST /v1/flows/<id>/run` con la clave de API.
-- Historial: `data/flows/runs/<id>.jsonl`.
+- Webhooks públicos: `POST /hooks/<empresa>/<id-del-flujo>` (con `?token=` si el disparador tiene secreto). La ruta antigua `/hooks/<id>` sigue funcionando solo para la empresa Default y responde con la cabecera `Deprecation`.
+- Ejecutar por API: `POST /v1/flows/<id>/run` con una clave que tenga `flows.manage`.
+- Historial: `data/tenants/<empresa>/flows/runs/<id>.jsonl`.
 
 **Módulos** integrados en `modules/`: básicos (filtro, espera, variables), HTTP, agentes, IA (DeepSeek y ElevenLabs), formato, mensajería (Telegram, Discord, Slack) y APIs públicas (clima, divisas, festivos). Los de la comunidad van en `modules-community/` y se instalan desde la pantalla Módulos pegando la URL de un archivo. Cómo crear uno: [MODULES.md](MODULES.md).
 
@@ -102,20 +104,46 @@ La forma de los módulos se inspira en las apps de [Automatisch](https://github.
 
 ## Agentes generados desde datasets
 
-`npm run build:datasets` crea 10 agentes a partir de Schema-Guided Dialogue, MultiWOZ 2.2, Taskmaster-2, τ²-bench, Bitext y public-apis (temas guiados, frases reales, conversaciones de ejemplo, políticas y acciones con APIs sin clave). Fuentes y licencias en `agents/<id>/knowledge/fuentes.md`.
+`npm run build:datasets` crea 10 agentes a partir de Schema-Guided Dialogue, MultiWOZ 2.2, Taskmaster-2, τ²-bench, Bitext y public-apis (temas guiados, frases reales, conversaciones de ejemplo, políticas y acciones con APIs sin clave). Fuentes y licencias en `agents/1/<id>/knowledge/fuentes.md`.
 
 ## Usuarios e inicio de sesión (MariaDB)
 
-- Se activa al definir `DB_HOST` en `.env` (ver `.env.example`). Al arrancar crea las tablas `users` y `sessions` en la base `agent_studio`.
-- **La primera cuenta que se registra es la de administrador.** Con `AUTH_ALLOW_SIGNUP=false` solo se puede crear esa primera cuenta.
+- Se activa al definir `DB_HOST` en `.env` (ver `.env.example`). Al arrancar aplica las migraciones versionadas (`schema_migrations`) en la base `agent_studio`.
+- **La primera cuenta que se registra es Propietaria de la empresa Default y superadmin de la plataforma.** Las demás entran con una invitación. Con `AUTH_ALLOW_SIGNUP=false` solo se puede crear esa primera cuenta o registrarse con una invitación. Con `TENANT_SELF_SIGNUP=true`, quien se registra sin invitación crea su propia empresa.
 - Contraseñas con scrypt y sal por usuario. La sesión es una cookie `HttpOnly; SameSite=Lax` de 30 días, y en la base solo se guarda el SHA-256 del token. Hay bloqueo de 15 min tras 8 intentos fallidos por email e IP, y se rechazan las peticiones que cambian datos desde otro origen. Si sirves la app por HTTPS, pon `COOKIE_SECURE=true`.
-- Toda la API de la interfaz (`/api/*`) pide sesión. La API pública `/v1` y `/mcp` siguen usando la clave de `data/api-key`, y los webhooks `/hooks/*` su token opcional.
-- Todavía no hay recuperación de contraseña por email ni gestión de usuarios desde la interfaz.
+- Toda la API de la interfaz (`/api/*`) pide sesión, y cada ruta, un permiso (ver más abajo). La API pública `/v1` y `/mcp` usa claves de API por empresa, y los webhooks `/hooks/*` su token opcional.
+- Usuarios, roles e invitaciones se gestionan desde **Configuración**. Todavía no hay recuperación de contraseña por email.
+- Sin `DB_HOST` la app funciona como antes: sin login, una sola empresa (Default) y todos los permisos; los módulos de negocio se ven en solo lectura.
+
+## Empresas, roles y módulos activables (multi-tenant)
+
+Una sola instalación sirve a varias empresas con sus datos totalmente aislados. Cada empresa tiene sus agentes (`agents/<empresa>/`), automatizaciones, conexiones cifradas, métricas, claves de API y auditoría (`data/tenants/<empresa>/`).
+
+**Quién gestiona qué**
+
+- **Superadmin de plataforma** (vista **Empresas y planes**): crea y suspende empresas, edita los planes (límites, precio por conversación y módulos incluidos), ve el consumo de cada empresa y puede **entrar como soporte** (con permisos de Admin; queda en la auditoría de la empresa).
+- **Admin de empresa** (vista **Configuración**): activa los módulos que permite su plan, invita usuarios, crea roles y claves de API y conecta apps.
+
+**Roles del sistema** (plantillas de solo lectura; se pueden clonar): *Propietario* (todo, incluida facturación y eliminar la empresa), *Admin* (todo menos eso), *Operador* (usa los módulos activos, sin tocar configuración, módulos ni usuarios) y *Solo lectura* (`*.read`). Los permisos siguen el formato `modulo.recurso.accion` (`crm.contacts.write`) más los de plataforma (`tenant.users.manage`, `tenant.features.manage`, `agents.manage`, `flows.manage`, `metrics.read`, `audit.read`…). Nadie puede dar permisos que no tiene, y siempre queda al menos un Propietario.
+
+**Módulos activables** (`src/features/registry.ts`): CRM, bandeja compartida, inventario, pedidos y pagos, carritos abandonados, catálogo en el chat, agenda, llamadas, SSO con Microsoft, evaluaciones, CFDI, widget web y facturación por uso; además, auditoría y credenciales cifradas, que no se pueden desactivar. Una función se puede usar solo si:
+
+```
+Plan de la empresa → ¿incluido?  ·  Empresa → ¿activado?  ·  Rol → ¿tiene el permiso?  ·  Dependencias → ¿activas y con sus conexiones?
+```
+
+Lo decide una sola función, `can(ctx, { feature, permission })` (`src/authz/can.ts`), que se aplica en `/api` (cada ruta declara su permiso), `/v1` y `/mcp` (scopes de la clave), las herramientas del agente (el LLM solo ve las de módulos activos y las llamadas bloqueadas se rechazan y auditan), las automatizaciones (los pasos de módulos inactivos se ocultan, el flujo falla sin ejecutar nada y los programados quedan en pausa) y los webhooks (403 y auditoría). Desactivar un módulo **nunca borra datos**. La interfaz oculta lo que no se puede usar, pero la seguridad se valida siempre en el servidor. Cómo añadir un módulo nuevo: [FEATURES.md](FEATURES.md).
+
+**Auditoría** (Configuración → Auditoría): cambios de módulos, roles, usuarios, conexiones y claves, inicios de sesión, modo soporte, herramientas y webhooks bloqueados. Es de solo lectura incluso para el Propietario (la base lo impide con triggers si el usuario de MariaDB tiene permiso `TRIGGER`). Se filtra por actor, acción y fecha y se exporta a CSV.
+
+**Migrar una instalación existente**: `npm run migrate:tenancy`. Es repetible y respalda antes de mover (`data/backups/tenancy-<fecha>/`): crea la empresa Default (id 1), hace Propietario y superadmin al administrador actual (el resto de cuentas pasan a Admin de Default), mueve `data/` y `agents/` a sus carpetas por empresa, cifra `connections.json` y convierte `data/api-key` en una clave de API de Default. Si NanoClaw ya tenía agentes enlazados, siguen funcionando; al volver a sincronizar se crean con el nombre nuevo `web-<empresa>-<agente>`.
+
+**Seguridad entre empresas**: además del aislamiento de datos, un agente o flujo solo ve las variables `FLOW_*` del `.env` si es de la empresa Default, los servidores MCP por stdio (que ejecutan programas en el servidor) solo se permiten en Default (`MCP_STDIO_ALL_TENANTS=true` para cambiarlo) e instalar módulos de la comunidad es cosa del superadmin.
 
 ## Conectar con más apps
 
-- **50 conectores nativos** (`modules/apps/index.ts`): Slack, Discord, Telegram, WhatsApp Business, Twilio, Teams, Google Chat, Mattermost, ntfy, Pushover, Gmail, Resend, SendGrid, Mailgun, Postmark, Brevo, Mailchimp, Notion, Airtable, Google Sheets, Google Calendar, Todoist, Trello, Asana, ClickUp, monday.com, Jira, Linear, GitHub, GitLab, Supabase, RSS, HubSpot, Pipedrive, Salesforce, Zendesk, Freshdesk, Intercom, Stripe, Shopify, WooCommerce, Mercado Pago, Typeform, WordPress, Claude, cualquier LLM compatible con OpenAI, Gemini y DeepL. Cada uno es una definición declarativa (`src/modules/http-app.ts`): añadir una app son unas líneas.
-- **Conexiones**: cada flujo tiene el paso «Elegir conexión»; las credenciales se guardan una vez en `data/connections.json` (permisos 0600, sin cifrar) o en el `.env` como `FLOW_<APP>_<CAMPO>`, y nunca se devuelven completas a la interfaz.
+- **51 conectores nativos** (`modules/apps/index.ts`): Slack, Discord, Telegram, WhatsApp Business, Twilio, Teams, Google Chat, Mattermost, ntfy, Pushover, Gmail, Resend, SendGrid, Mailgun, Postmark, Brevo, Mailchimp, Notion, Airtable, Google Sheets, Google Calendar, Todoist, Trello, Asana, ClickUp, monday.com, Jira, Linear, GitHub, GitLab, Supabase, RSS, HubSpot, Pipedrive, Salesforce, Zendesk, Freshdesk, Intercom, Stripe, Shopify, WooCommerce, Mercado Pago, Facturama (CFDI), Typeform, WordPress, Claude, cualquier LLM compatible con OpenAI, Gemini y DeepL. Cada uno es una definición declarativa (`src/modules/http-app.ts`): añadir una app son unas líneas.
+- **Conexiones**: cada flujo tiene el paso «Elegir conexión»; las credenciales se guardan por empresa en `data/tenants/<empresa>/connections.json`, **cifradas con AES-256-GCM** y una clave derivada por empresa de `ENCRYPTION_KEY`, y nunca se devuelven completas a la interfaz. Las variables `FLOW_<APP>_<CAMPO>` del `.env` solo valen para la empresa Default.
 - **MCP**: el módulo «MCP (cualquier servidor)» lista y llama herramientas de cualquier servidor MCP (HTTP, SSE o stdio). Los agentes también pueden usarlos: añade `mcpServers: [{ name, url, headers }]` a su YAML y sus herramientas estarán disponibles en las respuestas del modelo.
 - **OpenAPI**: el módulo «Cualquier API (OpenAPI)» llama a cualquier operación de una especificación OpenAPI/Swagger.
 - **Marketplace de 565 apps** (vista «Apps», inspirada en el marketplace de Dify; diseño propio, sin código de Dify): pestañas por tipo, categorías con contadores, búsqueda, tarjetas con el logo real de cada app y un panel con sus acciones, la conexión y «Usar en una automatización».

@@ -34,6 +34,7 @@ import { audit } from './tenancy/audit.ts';
 import { invalidatePermissions } from './authz/cache.ts';
 import { routes, route, send, sendBig, json, readBody, ipOf, query } from './http.ts';
 import { registerAdminRoutes } from './admin-routes.ts';
+import { localApiKey } from './tenancy/apikeys.ts';
 import { blockedFlowFeatures, filterModulesForTenant } from './features/enforce.ts';
 
 const PORT = Number(process.env.PORT ?? 3000);
@@ -390,7 +391,7 @@ export function createAppServer(): Server {
       if (status === 500) console.error(e);
       // Datos extra para la interfaz (p. ej. qué dependencias faltan)
       const extra = Object.fromEntries(['code', 'requires', 'dependents', 'feature', 'errors'].filter((k) => e[k] !== undefined && typeof e[k] !== 'function').map((k) => [k, e[k]]));
-      if (!res.headersSent) send(res, status, { error: status === 500 ? e.message : e.message, ...(e.code === 'ENOENT' ? {} : extra) });
+      if (!res.headersSent) send(res, status, { error: e.message, ...(e.code === 'ENOENT' ? {} : extra) });
     }
   });
 }
@@ -399,7 +400,10 @@ export async function startServer(port = PORT): Promise<Server> {
   if (authEnabled) {
     try { await initAuth(); console.log(`Usuarios: MariaDB (${process.env.DB_NAME ?? 'agent_studio'}@${process.env.DB_HOST}) · registro ${process.env.AUTH_ALLOW_SIGNUP === 'false' ? 'cerrado' : 'abierto'}`); }
     catch (e) { console.error(`✖ No se pudo conectar a MariaDB: ${(e as Error).message}`); }
-  } else console.log('⚠ Sin DB_HOST: la app funciona sin inicio de sesión (una sola empresa)');
+  } else {
+    localApiKey(); // como antes: genera data/api-key (clave de la empresa Default) si no existe
+    console.log('⚠ Sin DB_HOST: la app funciona sin inicio de sesión (una sola empresa) · clave de API en data/api-key');
+  }
   await loadModules();
   setTenantFilter(isTenantActive);
   startScheduler();

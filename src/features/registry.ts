@@ -162,7 +162,7 @@ export const FEATURES: FeatureDef[] = [
     requiredConnections: ['whatsapp'],
     permissions: ['chat_catalog.catalog.read', 'chat_catalog.catalog.write'],
     agentTools: ['chat_catalog_send_product'],
-    flowModules: ['chat_catalog.*'],
+    flowModules: ['chat-catalog.*'],
     navItems: ['/catalog'],
   }),
   def({
@@ -189,7 +189,7 @@ export const FEATURES: FeatureDef[] = [
     requiredConnections: ['twilio'],
     permissions: ['voice_calls.calls.read', 'voice_calls.calls.create', 'voice_calls.numbers.manage'],
     agentTools: ['voice_calls_start_call'],
-    flowModules: ['voice_calls.*'],
+    flowModules: ['voice-calls.*'],
     navItems: ['/calls'],
     configSchema: {
       type: 'object',

@@ -6,7 +6,7 @@ Un **módulo** añade disparadores y acciones a las **Automatizaciones** (el edi
 
 1. Copia `modules/_plantilla/` a `modules-community/<tu-clave>/`.
 2. Edita `index.js` (o `index.ts`): cambia `key`, `name` y escribe tus acciones.
-3. En la app, ve a **Módulos → Recargar**. Tu módulo aparece en la paleta del editor de flujos.
+3. En la app, ve a **Módulos → Recargar** (solo el superadmin). Tu módulo aparece en la paleta del editor de flujos.
 
 Para compartirlo, publica el archivo (por ejemplo en GitHub) y cualquiera podrá instalarlo pegando su URL "raw" en **Módulos → Añadir un módulo de la comunidad**.
 
@@ -48,7 +48,7 @@ Tipos de `arguments`: `string`, `text`, `number`, `boolean`, `dropdown` (con `op
 | `type` | Cuándo se ejecuta | Datos en `{{trigger}}` |
 |---|---|---|
 | `manual` | Botón **Probar** o `POST /v1/flows/<id>/run` | El JSON de prueba |
-| `webhook` | `POST /hooks/<id-del-flujo>` | `method`, `body`, `query`, `headers` |
+| `webhook` | `POST /hooks/<empresa>/<id-del-flujo>` | `method`, `body`, `query`, `headers` |
 | `schedule` | Cada `everyMinutes` minutos | `programado` (fecha) |
 | `event` | Evento interno; hoy: `agent.turn` | `agentId`, `message`, `reply`, `topic`, `sessionId` |
 | `poll` | Cada `everyMinutes`, llamando a tu `run()` | Cada elemento nuevo (por `id`) |
@@ -61,7 +61,8 @@ Un disparador `poll` devuelve una lista de objetos con `id`. La primera vez solo
 |---|---|
 | `ctx.args` | Argumentos del paso, ya con las `{{variables}}` sustituidas |
 | `ctx.trigger`, `ctx.steps` | Datos del disparador y salidas de los pasos anteriores |
-| `ctx.env` | Solo variables del `.env` que empiezan por `FLOW_` |
+| `ctx.env` | Solo variables del `.env` que empiezan por `FLOW_` (y solo en la empresa Default) |
+| `ctx.tenant.id` | Empresa dueña del flujo |
 | `ctx.fetchJson(url, init)` | `fetch` con tiempo límite que devuelve JSON (o texto) |
 | `ctx.agentStudio.chat(agentId, mensaje, sesión?)` | Habla con un agente |
 | `ctx.agentStudio.llm(prompt, sistema?, temperatura?)` | Texto con DeepSeek |
