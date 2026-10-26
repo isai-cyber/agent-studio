@@ -16,7 +16,10 @@ import type { AgentDef } from './types.ts';
 import { handlePublic } from './public-api.ts';
 import { authEnabled, initAuth, currentUser, register, login, logout, authInfo, sameOrigin } from './auth.ts';
 import { loadModules, listModules, installFromUrl, uninstall, loadErrors, getTrigger } from './modules/registry.ts';
-import { listFlows, getFlow, saveFlow, deleteFlow, runFlow, listRuns, startScheduler } from './flows.ts';
+import { listFlows, getFlow, saveFlow, deleteFlow, runFlow, listRuns, startScheduler, setTenantFilter, type Flow } from './flows.ts';
+import { DEFAULT_TENANT_ID, DEFAULT_TENANT_SLUG, tenantDataPath } from './tenancy/paths.ts';
+import { getTenantBySlug, tenantSlug, isTenantActive } from './tenancy/tenants.ts';
+import { needsTenancyMigration } from './tenancy/migrate.ts';
 import { setConnection, deleteConnection, listMasked } from './connections.ts';
 import { planFromText, assistantTurn } from './assistant.ts';
 import { recordTts } from './metrics.ts';
@@ -72,7 +75,9 @@ async function loadCatalog(): Promise<{ functions: string[]; industries: string[
   return YAML.parse(await readFile(join(ROOT, 'catalog', 'catalog.yaml'), 'utf8'));
 }
 
-type Handler = (req: IncomingMessage, res: ServerResponse, params: string[]) => Promise<void>;
+// Contexto de cada petición: la empresa activa (más adelante, usuario y permisos)
+export interface ReqCtx { tenantId: number }
+type Handler = (req: IncomingMessage, res: ServerResponse, params: string[], ctx: ReqCtx) => Promise<void>;
 const routes: [string, RegExp, Handler][] = [];
 const route = (method: string, pattern: string, h: Handler) =>
   routes.push([method, new RegExp(`^${pattern.replace(/:\w+/g, '([^/]+)')}$`), h]);
@@ -89,72 +94,72 @@ route('GET', '/api/status', async (_req, res) => {
 
 route('GET', '/api/catalog', async (_req, res) => send(res, 200, await loadCatalog()));
 
-route('POST', '/api/catalog/:id/use', async (_req, res, [id]) => {
+route('POST', '/api/catalog/:id/use', async (_req, res, [id], ctx) => {
   const tpl = (await loadCatalog()).templates.find((t) => t.id === id);
   if (!tpl) return send(res, 404, { error: 'Plantilla no encontrada' });
-  const agent = await saveAgent({ ...structuredClone(tpl), id: await uniqueId(tpl.id), source: 'template' });
+  const agent = await saveAgent(ctx.tenantId, { ...structuredClone(tpl), id: await uniqueId(ctx.tenantId, tpl.id), source: 'template' });
   send(res, 201, agent);
 });
 
-route('GET', '/api/agents', async (_req, res) => send(res, 200, await listAgents()));
+route('GET', '/api/agents', async (_req, res, _p, ctx) => send(res, 200, await listAgents(ctx.tenantId)));
 
-route('POST', '/api/agents', async (req, res) => {
+route('POST', '/api/agents', async (req, res, _p, ctx) => {
   const body = await json<Partial<AgentDef>>(req);
-  const agent = await saveAgent({
+  const agent = await saveAgent(ctx.tenantId, {
     name: body.name ?? 'Nuevo agente',
     instructions: body.instructions ?? 'Eres un asistente útil.',
     ...body,
-    id: await uniqueId(body.name ?? 'nuevo-agente'),
+    id: await uniqueId(ctx.tenantId, body.name ?? 'nuevo-agente'),
   } as AgentDef);
   send(res, 201, agent);
 });
 
-route('GET', '/api/agents/:id', async (_req, res, [id]) => send(res, 200, await getAgent(id)));
+route('GET', '/api/agents/:id', async (_req, res, [id], ctx) => send(res, 200, await getAgent(ctx.tenantId, id)));
 
-route('GET', '/api/agents/:id/yaml', async (_req, res, [id]) => {
-  const a = await getAgent(id);
+route('GET', '/api/agents/:id/yaml', async (_req, res, [id], ctx) => {
+  const a = await getAgent(ctx.tenantId, id);
   const { id: _omit, ...rest } = a;
   send(res, 200, YAML.stringify(rest, { lineWidth: 0 }), 'text/yaml; charset=utf-8');
 });
 
-route('PUT', '/api/agents/:id/yaml', async (req, res, [id]) => {
-  const agent = await saveAgentYaml(id, (await readBody(req)).toString('utf8'));
+route('PUT', '/api/agents/:id/yaml', async (req, res, [id], ctx) => {
+  const agent = await saveAgentYaml(ctx.tenantId, id, (await readBody(req)).toString('utf8'));
   // Mantener CLAUDE.md de NanoClaw al día si el agente ya está enlazado
   if (useNanoclaw() && agent.nanoclaw) {
-    agent.nanoclaw = await syncAgent(agent);
-    await saveAgent(agent);
+    agent.nanoclaw = await syncAgent(agent, await tenantSlug(ctx.tenantId));
+    await saveAgent(ctx.tenantId, agent);
   }
   send(res, 200, agent);
 });
 
-route('POST', '/api/agents/:id/nanoclaw/sync', async (_req, res, [id]) => {
-  const agent = await getAgent(id);
-  agent.nanoclaw = await syncAgent(agent);
-  await saveAgent(agent);
+route('POST', '/api/agents/:id/nanoclaw/sync', async (_req, res, [id], ctx) => {
+  const agent = await getAgent(ctx.tenantId, id);
+  agent.nanoclaw = await syncAgent(agent, await tenantSlug(ctx.tenantId));
+  await saveAgent(ctx.tenantId, agent);
   send(res, 200, agent.nanoclaw);
 });
 
-route('DELETE', '/api/agents/:id', async (_req, res, [id]) => {
-  await deleteAgent(id);
+route('DELETE', '/api/agents/:id', async (_req, res, [id], ctx) => {
+  await deleteAgent(ctx.tenantId, id);
   send(res, 204, '');
 });
 
-route('POST', '/api/agents/:id/chat', async (req, res, [id]) => {
+route('POST', '/api/agents/:id/chat', async (req, res, [id], ctx) => {
   const { message = '', sessionId } = await json<{ message?: string; sessionId?: string }>(req);
-  send(res, 200, await handleTurn(await getAgent(id), sessionId, message));
+  send(res, 200, await handleTurn(await getAgent(ctx.tenantId, id), sessionId, message));
 });
 
-route('POST', '/api/sessions/:sid/reset', async (_req, res, [sid]) => {
-  resetSession(sid);
+route('POST', '/api/sessions/:sid/reset', async (_req, res, [sid], ctx) => {
+  resetSession(ctx.tenantId, sid);
   send(res, 204, '');
 });
 
-route('POST', '/api/tts', async (req, res) => {
+route('POST', '/api/tts', async (req, res, _p, ctx) => {
   const { text, agentId } = await json<{ text: string; agentId?: string }>(req);
-  const agent = agentId ? await getAgent(agentId) : undefined;
+  const agent = agentId ? await getAgent(ctx.tenantId, agentId) : undefined;
   const t0 = performance.now();
   const audio = await textToSpeech(text, agent?.voice?.voiceId, agent?.voice?.model);
-  void recordTts(agent?.id, text.length, performance.now() - t0);
+  void recordTts(ctx.tenantId, agent?.id, text.length, performance.now() - t0);
   send(res, 200, audio, 'audio/mpeg');
 });
 
@@ -167,31 +172,31 @@ route('POST', '/api/stt', async (req, res) => {
 route('GET', '/api/voices', async (_req, res) => send(res, 200, await listVoices()));
 
 // Subida de la solución exportada de Copilot Studio (.zip) en el cuerpo
-route('POST', '/api/import/solution', async (req, res) => {
+route('POST', '/api/import/solution', async (req, res, _p, ctx) => {
   const dir = await mkdtemp(join(tmpdir(), 'cs-upload-'));
   try {
     const file = join(dir, 'solution.zip');
     await writeFile(file, await readBody(req, 200 * 1024 * 1024));
-    send(res, 200, await importPath(file));
+    send(res, 200, await importPath(ctx.tenantId, file));
   } finally {
     await rm(dir, { recursive: true, force: true });
   }
 });
 
 // Métricas (panel)
-route('GET', '/api/metrics', async (req, res) => {
+route('GET', '/api/metrics', async (req, res, _p, ctx) => {
   const q = new URL(req.url ?? '', 'http://x').searchParams.get('range');
   const range = q === '24h' || q === '30d' ? q : '7d';
-  const { events, demo } = await readEvents();
+  const { events, demo } = await readEvents(ctx.tenantId);
   // Las plantillas aportan nombres legibles a los agentes de los datos de ejemplo
-  send(res, 200, aggregate(events, [...(await listAgents()), ...(await loadCatalog()).templates], range, demo));
+  send(res, 200, aggregate(events, [...(await listAgents(ctx.tenantId)), ...(await loadCatalog()).templates], range, demo));
 });
-route('POST', '/api/metrics/demo', async (_req, res) => {
-  await writeDemo(makeDemo((await listAgents()).map((a) => a.id)));
+route('POST', '/api/metrics/demo', async (_req, res, _p, ctx) => {
+  await writeDemo(ctx.tenantId, makeDemo((await listAgents(ctx.tenantId)).map((a) => a.id)));
   send(res, 201, { ok: true });
 });
-route('DELETE', '/api/metrics/demo', async (_req, res) => {
-  await clearDemo();
+route('DELETE', '/api/metrics/demo', async (_req, res, _p, ctx) => {
+  await clearDemo(ctx.tenantId);
   send(res, 204, '');
 });
 
@@ -213,46 +218,49 @@ route('DELETE', '/api/modules/:key', async (_req, res, [key]) => {
 // ---------- conexiones (credenciales por app; nunca se devuelven completas) ----------
 // Solo se enmascaran los campos secretos (tokens, claves); subdominios y similares se muestran
 const secretFields = () => Object.fromEntries(listModules().filter((m) => m.auth).map((m) => [m.key, m.auth!.fields.filter((f) => f.secret).map((f) => f.key)]));
-route('GET', '/api/connections', async (_req, res) => send(res, 200, await listMasked(secretFields())));
-route('PUT', '/api/connections/:app', async (req, res, [app]) => {
+route('GET', '/api/connections', async (_req, res, _p, ctx) => send(res, 200, await listMasked(ctx.tenantId, secretFields())));
+route('PUT', '/api/connections/:app', async (req, res, [app], ctx) => {
   const mod = listModules().find((m) => m.key === app);
   if (!mod?.auth) return send(res, 404, { error: 'Esa app no usa conexión' });
   const { values } = await json<{ values?: Record<string, string> }>(req);
   const allowed = new Set(mod.auth.fields.map((f) => f.key));
-  await setConnection(app, Object.fromEntries(Object.entries(values ?? {}).filter(([k]) => allowed.has(k))));
-  send(res, 200, (await listMasked(secretFields()))[app] ?? {});
+  await setConnection(ctx.tenantId, app, Object.fromEntries(Object.entries(values ?? {}).filter(([k]) => allowed.has(k))));
+  send(res, 200, (await listMasked(ctx.tenantId, secretFields()))[app] ?? {});
 });
-route('DELETE', '/api/connections/:app', async (_req, res, [app]) => {
-  await deleteConnection(app);
+route('DELETE', '/api/connections/:app', async (_req, res, [app], ctx) => {
+  await deleteConnection(ctx.tenantId, app);
   send(res, 204, '');
 });
 
 // ---------- asistente de automatización ----------
-route('POST', '/api/assistant/plan', async (req, res) => {
+route('POST', '/api/assistant/plan', async (req, res, _p, ctx) => {
   const { text } = await json<{ text?: string }>(req);
   if (!text?.trim()) return send(res, 400, { error: 'Describe lo que quieres automatizar' });
-  send(res, 201, await planFromText(text.trim()));
+  send(res, 201, await planFromText(ctx.tenantId, text.trim()));
 });
-route('POST', '/api/assistant/chat', async (req, res) => {
+route('POST', '/api/assistant/chat', async (req, res, _p, ctx) => {
   const { message, flowId } = await json<{ message?: string; flowId?: string }>(req);
   if (!message?.trim()) return send(res, 400, { error: 'Escribe un mensaje' });
-  send(res, 200, await assistantTurn(message.trim(), flowId));
+  send(res, 200, await assistantTurn(ctx.tenantId, message.trim(), flowId));
 });
 
 // ---------- flujos ----------
-route('GET', '/api/flows', async (_req, res) => send(res, 200, await listFlows()));
-route('POST', '/api/flows', async (req, res) => send(res, 201, await saveFlow({ ...(await json<Record<string, unknown>>(req)), id: undefined })));
-route('GET', '/api/flows/:id', async (_req, res, [id]) => send(res, 200, await getFlow(id)));
-route('PUT', '/api/flows/:id', async (req, res, [id]) => send(res, 200, await saveFlow({ ...(await json<Record<string, unknown>>(req)), id })));
-route('DELETE', '/api/flows/:id', async (_req, res, [id]) => {
-  await deleteFlow(id);
+route('GET', '/api/flows', async (_req, res, _p, ctx) => send(res, 200, await listFlows(ctx.tenantId)));
+route('POST', '/api/flows', async (req, res, _p, ctx) => send(res, 201, await saveFlow(ctx.tenantId, { ...(await json<Record<string, unknown>>(req)), id: undefined })));
+route('GET', '/api/flows/:id', async (_req, res, [id], ctx) => send(res, 200, await getFlow(ctx.tenantId, id)));
+route('PUT', '/api/flows/:id', async (req, res, [id], ctx) => {
+  await getFlow(ctx.tenantId, id); // solo se edita un flujo que ya existe en esta empresa
+  send(res, 200, await saveFlow(ctx.tenantId, { ...(await json<Record<string, unknown>>(req)), id }));
+});
+route('DELETE', '/api/flows/:id', async (_req, res, [id], ctx) => {
+  await deleteFlow(ctx.tenantId, id);
   send(res, 204, '');
 });
-route('POST', '/api/flows/:id/run', async (req, res, [id]) => {
+route('POST', '/api/flows/:id/run', async (req, res, [id], ctx) => {
   const { payload } = await json<{ payload?: unknown }>(req);
-  send(res, 200, await runFlow(await getFlow(id), payload ?? { manual: true, ts: new Date().toISOString() }, 'manual'));
+  send(res, 200, await runFlow(await getFlow(ctx.tenantId, id), payload ?? { manual: true, ts: new Date().toISOString() }, 'manual'));
 });
-route('GET', '/api/flows/:id/runs', async (_req, res, [id]) => send(res, 200, await listRuns(id)));
+route('GET', '/api/flows/:id/runs', async (_req, res, [id], ctx) => send(res, 200, await listRuns(ctx.tenantId, id)));
 
 // Datos para la pantalla "Conectar" (solo la interfaz local)
 route('GET', '/api/connect', async (req, res) => {
@@ -261,14 +269,31 @@ route('GET', '/api/connect', async (req, res) => {
 route('POST', '/api/connect/rotate', async (_req, res) => send(res, 200, { apiKey: rotateApiKey() }));
 
 // YAML de un tema pegado desde el editor de código de Copilot Studio
-route('POST', '/api/import/topic', async (req, res) => {
+route('POST', '/api/import/topic', async (req, res, _p, ctx) => {
   const { yaml, agentName, agentId } = await json<{ yaml: string; agentName?: string; agentId?: string }>(req);
-  send(res, 200, await importTopicYaml(yaml, agentName, agentId));
+  send(res, 200, await importTopicYaml(ctx.tenantId, yaml, agentName, agentId));
 });
 
-// Webhook público de un flujo: /hooks/<id>. Responde con el resultado de la ejecución.
-async function handleHook(req: IncomingMessage, res: ServerResponse, id: string): Promise<void> {
-  const flow = await getFlow(decodeURIComponent(id));
+// Webhook público de un flujo: /hooks/<empresa>/<id>. Responde con el resultado.
+// La ruta antigua /hooks/<id> sigue funcionando solo para la empresa Default (obsoleta).
+async function handleHook(req: IncomingMessage, res: ServerResponse, rest: string): Promise<void> {
+  const parts = rest.split('/').filter(Boolean).map(decodeURIComponent);
+  let tenantId: number;
+  let id: string;
+  if (parts.length === 2) {
+    const tenant = await getTenantBySlug(parts[0]);
+    if (!tenant || tenant.status !== 'active') return send(res, 404, { error: 'Este flujo no está activo o no usa un disparador webhook' });
+    tenantId = tenant.id;
+    id = parts[1];
+  } else if (parts.length === 1) {
+    tenantId = DEFAULT_TENANT_ID;
+    id = parts[0];
+    res.setHeader('Deprecation', 'true');
+    res.setHeader('Link', `</hooks/${DEFAULT_TENANT_SLUG}/${encodeURIComponent(id)}>; rel="successor-version"`);
+    console.warn(`[webhooks] /hooks/${id} está obsoleta: usa /hooks/${DEFAULT_TENANT_SLUG}/${id}`);
+  } else return send(res, 404, { error: 'Ruta no encontrada' });
+  let flow: Flow;
+  try { flow = await getFlow(tenantId, id); } catch { return send(res, 404, { error: 'Este flujo no está activo o no usa un disparador webhook' }); }
   const trig = flow.trigger ? getTrigger(flow.trigger.module, flow.trigger.key) : undefined;
   if (!flow.active || trig?.type !== 'webhook') return send(res, 404, { error: 'Este flujo no está activo o no usa un disparador webhook' });
   const url = new URL(req.url ?? '/', 'http://x');
@@ -300,10 +325,11 @@ createServer(async (req, res) => {
     const path = new URL(req.url ?? '/', 'http://x').pathname;
     if (await handlePublic(req, res, path)) return;
     if (path.startsWith('/hooks/')) return await handleHook(req, res, path.slice(7));
+    // Audio generado por los flujos: /files/<tenant_id>/<uuid>.mp3 (nombre aleatorio, no adivinable)
     if (path.startsWith('/files/')) {
-      const name = path.slice(7);
-      const file = join(ROOT, 'data', 'files', name);
-      if (!/^[\w-]+\.mp3$/.test(name) || !existsSync(file)) return send(res, 404, 'No encontrado', 'text/plain');
+      const m = path.match(/^\/files\/([1-9]\d*)\/([\w-]+\.mp3)$/);
+      const file = m ? tenantDataPath(Number(m[1]), 'files', m[2]) : '';
+      if (!m || !existsSync(file)) return send(res, 404, 'No encontrado', 'text/plain');
       return send(res, 200, await readFile(file), 'audio/mpeg');
     }
     // Login: toda la API de la interfaz pide sesión, salvo /api/auth/*
@@ -319,9 +345,10 @@ createServer(async (req, res) => {
         if (!user) return send(res, 401, { error: 'Inicia sesión para continuar' });
       } else if (path === '/api/auth/me') return send(res, 200, { user: null, disabled: true });
     }
+    const ctx: ReqCtx = { tenantId: DEFAULT_TENANT_ID };
     for (const [method, re, h] of routes) {
       const m = path.match(re);
-      if (m && req.method === method) return await h(req, res, m.slice(1).map(decodeURIComponent));
+      if (m && req.method === method) return await h(req, res, m.slice(1).map(decodeURIComponent), ctx);
     }
     if (path.startsWith('/api/')) return send(res, 404, { error: 'Ruta no encontrada' });
     await serveStatic(req, res);
@@ -337,7 +364,9 @@ createServer(async (req, res) => {
     catch (e) { console.error(`✖ No se pudo conectar a MariaDB: ${(e as Error).message}`); }
   } else console.log('⚠ Sin DB_HOST: la app funciona sin inicio de sesión');
   await loadModules();
+  setTenantFilter(isTenantActive);
   startScheduler();
+  if (await needsTenancyMigration()) console.warn('⚠ Hay datos en el formato antiguo (una sola empresa). Ejecuta: npm run migrate:tenancy');
   { const l = listModules(); const n = (b: string) => l.filter((m) => m.badge === b).length; console.log(`Módulos: ${l.length} (${n("API")} APIs, ${n("MCP")} servidores MCP, ${l.length - n("API") - n("MCP")} nativos)${loadErrors.length ? ` · ${loadErrors.length} con errores` : ""}`); }
   console.log(`Agent Studio en http://localhost:${PORT}`);
   getApiKey(); // genera data/api-key si no existe

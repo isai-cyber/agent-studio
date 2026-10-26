@@ -26,13 +26,13 @@ async function templates(): Promise<AgentDef[]> {
   return (YAML.parse(await readFile(join(ROOT, 'catalog', 'catalog.yaml'), 'utf8')) as { templates: AgentDef[] }).templates;
 }
 
-export function createMcpServer(): McpServer {
+export function createMcpServer(tenantId: number): McpServer {
   const server = new McpServer({ name: 'agent-studio', version: '0.1.0' });
 
   server.registerTool(
     'list_agents',
     { title: 'Listar agentes', description: 'Lista los agentes disponibles en Agent Studio con su id, descripción y temas.', inputSchema: {} },
-    async () => text((await listAgents()).map(summary)),
+    async () => text((await listAgents(tenantId)).map(summary)),
   );
 
   server.registerTool(
@@ -42,7 +42,7 @@ export function createMcpServer(): McpServer {
       description: 'Devuelve la definición completa de un agente: instrucciones, temas, conocimiento y acciones.',
       inputSchema: { agent_id: z.string().describe('id del agente (de list_agents)') },
     },
-    async ({ agent_id }) => text(await getAgent(agent_id)),
+    async ({ agent_id }) => text(await getAgent(tenantId, agent_id)),
   );
 
   server.registerTool(
@@ -58,7 +58,7 @@ export function createMcpServer(): McpServer {
       },
     },
     async ({ agent_id, message, session_id }) => {
-      const r = await handleTurn(await getAgent(agent_id), session_id, message, 'mcp');
+      const r = await handleTurn(await getAgent(tenantId, agent_id), session_id, message, 'mcp');
       return text({ session_id: r.sessionId, reply: r.messages.join('\n\n'), options: r.options ?? [], topic: r.topic ?? null });
     },
   );
@@ -76,7 +76,7 @@ export function createMcpServer(): McpServer {
       },
     },
     async ({ name, instructions, description, greeting }) => {
-      const agent = await saveAgent({ id: await uniqueId(name), name, instructions, description, greeting, icon: '✨', voice: { enabled: true } });
+      const agent = await saveAgent(tenantId, { id: await uniqueId(tenantId, name), name, instructions, description, greeting, icon: '✨', voice: { enabled: true } });
       return text(summary(agent));
     },
   );
@@ -97,7 +97,7 @@ export function createMcpServer(): McpServer {
     async ({ template_id }) => {
       const tpl = (await templates()).find((t) => t.id === template_id);
       if (!tpl) return { ...text(`Plantilla no encontrada: ${template_id}`), isError: true };
-      const agent = await saveAgent({ ...structuredClone(tpl), id: await uniqueId(tpl.id), source: 'template' });
+      const agent = await saveAgent(tenantId, { ...structuredClone(tpl), id: await uniqueId(tenantId, tpl.id), source: 'template' });
       return text(summary(agent));
     },
   );
@@ -110,7 +110,7 @@ export function createMcpServer(): McpServer {
       inputSchema: { session_id: z.string() },
     },
     async ({ session_id }) => {
-      resetSession(session_id);
+      resetSession(tenantId, session_id);
       return text('Conversación reiniciada');
     },
   );

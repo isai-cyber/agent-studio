@@ -34,6 +34,7 @@ export interface StepContext {
   steps: Record<string, any>;
   env: Record<string, string | undefined>; // solo variables FLOW_* del .env
   flow: { id: string; name: string };
+  tenant: { id: number }; // empresa dueña del flujo
   log: (msg: string) => void;
   // Credenciales guardadas para una app (paso "Elegir conexión" o FLOW_<APP>_<CAMPO> del .env)
   connection: (app: string, fields?: string[]) => Promise<Record<string, string>>;
@@ -113,7 +114,9 @@ export function renderDeep(value: unknown, vars: Record<string, unknown>): unkno
 }
 
 // Variables de entorno visibles para los flujos: solo FLOW_* (los secretos del
-// servidor, como DEEPSEEK_API_KEY, no se exponen a módulos ni plantillas)
-export function flowEnv(): Record<string, string | undefined> {
+// servidor, como DEEPSEEK_API_KEY, no se exponen a módulos ni plantillas) y solo
+// en la empresa Default: el .env es del dueño de la instalación.
+export function flowEnv(tenantId: number): Record<string, string | undefined> {
+  if (tenantId !== 1) return {};
   return Object.fromEntries(Object.entries(process.env).filter(([k]) => k.startsWith('FLOW_')));
 }

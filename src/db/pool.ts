@@ -1,12 +1,12 @@
 // Pool de MariaDB compartido por usuarios, empresas, permisos y auditoría.
 // Se activa al definir DB_HOST (ver .env.example); sin él, la app funciona sin login.
-import mariadb from 'mariadb';
+import mariadb, { type Pool, type PoolConnection } from 'mariadb';
 
 export const dbEnabled = Boolean(process.env.DB_HOST);
 
-let pool: mariadb.Pool | null = null;
+let pool: Pool | null = null;
 
-export function db(): mariadb.Pool {
+export function db(): Pool {
   if (!dbEnabled) throw Object.assign(new Error('Esta función necesita MariaDB (define DB_HOST en .env)'), { status: 501 });
   pool ??= mariadb.createPool({
     host: process.env.DB_HOST,
@@ -29,7 +29,7 @@ export async function closeDb(): Promise<void> {
 }
 
 // Ejecuta fn dentro de una transacción
-export async function tx<T>(fn: (conn: mariadb.PoolConnection) => Promise<T>): Promise<T> {
+export async function tx<T>(fn: (conn: PoolConnection) => Promise<T>): Promise<T> {
   const conn = await db().getConnection();
   try {
     await conn.beginTransaction();

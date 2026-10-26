@@ -11,7 +11,7 @@
 //
 // test/tenant-db.test.ts comprueba además, leyendo el código, que nadie consulta
 // estas tablas con db().query() por fuera de los archivos permitidos.
-import type mariadb from 'mariadb';
+import type { Pool, PoolConnection } from 'mariadb';
 import { db } from './pool.ts';
 
 // Tablas con datos de una empresa. Toda tabla de negocio nueva debe añadirse
@@ -48,7 +48,7 @@ export interface TenantDb {
   query<T = any>(sql: string, params?: unknown[]): Promise<T>;
 }
 
-export function tenantDb(tenantId: number, conn?: mariadb.PoolConnection | mariadb.Pool): TenantDb {
+export function tenantDb(tenantId: number, conn?: PoolConnection | Pool): TenantDb {
   assertTenantId(tenantId);
   return {
     tenantId,

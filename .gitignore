@@ -3,13 +3,16 @@ node_modules
 .claude/
 .DS_Store
 
-# Datos locales: conexiones, flujos, métricas, sesiones, clave de API, datasets descargados
+# Datos locales: data/tenants/<id>/ (conexiones cifradas, flujos, métricas), respaldos, datasets descargados
 data/
 
-# Agentes locales que no se publican (de prueba o importados de una cuenta de Copilot Studio)
-agents/agente-en-blanco*/
-agents/atiende-a-clientes-por-telegram/
-agents/sales-lead-engagement-agent/
+# Agentes por empresa: agents/<tenant_id>/<agente>/. Solo se publican los de ejemplo
+# de la empresa Default (agents/1/); el resto son locales.
+agents/*/
+!agents/1/
+agents/1/agente-en-blanco*/
+agents/1/atiende-a-clientes-por-telegram/
+agents/1/sales-lead-engagement-agent/
 
 modules-community/*
 !modules-community/.gitkeep

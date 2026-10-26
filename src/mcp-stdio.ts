@@ -6,4 +6,4 @@ import { createMcpServer } from './mcp.ts';
 // stdout es el canal del protocolo: cualquier log debe ir a stderr
 console.log = console.error;
 
-await createMcpServer().connect(new StdioServerTransport());
+await createMcpServer(1).connect(new StdioServerTransport());

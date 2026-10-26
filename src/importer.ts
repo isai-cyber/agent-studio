@@ -243,9 +243,9 @@ function belongsTo(c: RawComponent, botSchema: string): boolean {
 
 const TEXT_EXT = new Set(['.txt', '.md', '.csv', '.json', '.html', '.htm', '.xml', '.yaml', '.yml']);
 
-async function buildAgent(botSchema: string, botName: string, comps: RawComponent[], _config: Y | undefined, warnings: string[]): Promise<AgentDef> {
-  const id = await uniqueId(botName);
-  const dir = agentDir(id);
+async function buildAgent(tenantId: number, botSchema: string, botName: string, comps: RawComponent[], _config: Y | undefined, warnings: string[]): Promise<AgentDef> {
+  const id = await uniqueId(tenantId, botName);
+  const dir = agentDir(tenantId, id);
   await mkdir(join(dir, 'knowledge'), { recursive: true });
   await mkdir(join(dir, 'import'), { recursive: true });
 
@@ -312,11 +312,11 @@ async function buildAgent(botSchema: string, botName: string, comps: RawComponen
     voice: { enabled: true },
     source: 'copilot-studio-import',
   };
-  await saveAgent(agent);
+  await saveAgent(tenantId, agent);
   return agent;
 }
 
-export async function importPath(input: string): Promise<ImportReport> {
+export async function importPath(tenantId: number, input: string): Promise<ImportReport> {
   const warnings: string[] = [];
   const report: ImportReport = { agents: [], warnings };
   let root = input;
@@ -324,7 +324,7 @@ export async function importPath(input: string): Promise<ImportReport> {
 
   const info = await stat(input);
   if (info.isFile() && /\.(ya?ml|txt)$/i.test(input)) {
-    return importTopicYaml(await readFile(input, 'utf8'), basename(input, extname(input)));
+    return importTopicYaml(tenantId, await readFile(input, 'utf8'), basename(input, extname(input)));
   }
   if (info.isFile()) {
     tmp = await mkdtemp(join(tmpdir(), 'cs-import-'));
@@ -345,7 +345,7 @@ export async function importPath(input: string): Promise<ImportReport> {
 
     for (const [schema, bot] of bots) {
       const comps = bots.size === 1 ? components : components.filter((c) => belongsTo(c, schema));
-      const agent = await buildAgent(schema, bot.name, comps, bot.config, warnings);
+      const agent = await buildAgent(tenantId, schema, bot.name, comps, bot.config, warnings);
       report.agents.push({ id: agent.id, name: agent.name, topics: agent.topics?.length ?? 0, knowledge: agent.knowledge?.length ?? 0, actions: agent.actions?.length ?? 0 });
     }
   } finally {
@@ -355,7 +355,7 @@ export async function importPath(input: string): Promise<ImportReport> {
 }
 
 // Tema suelto pegado desde el editor de código de Copilot Studio
-export async function importTopicYaml(yamlText: string, agentName = 'Agente importado', targetAgentId?: string): Promise<ImportReport> {
+export async function importTopicYaml(tenantId: number, yamlText: string, agentName = 'Agente importado', targetAgentId?: string): Promise<ImportReport> {
   const warnings: string[] = [];
   const docs = YAML.parseAllDocuments(yamlText).map((d) => d.toJSON() as Y).filter(Boolean);
   const topics = docs.map((d, i) => convertTopic(d, `Tema ${i + 1}`, warnings)).filter((t): t is Topic => Boolean(t));
@@ -364,11 +364,11 @@ export async function importTopicYaml(yamlText: string, agentName = 'Agente impo
   const { getAgent } = await import('./store.ts');
   let agent: AgentDef;
   if (targetAgentId) {
-    agent = await getAgent(targetAgentId);
+    agent = await getAgent(tenantId, targetAgentId);
     agent.topics = [...(agent.topics ?? []).filter((t) => !topics.some((n) => n.name === t.name)), ...topics];
   } else {
     agent = {
-      id: await uniqueId(agentName),
+      id: await uniqueId(tenantId, agentName),
       name: agentName,
       instructions: `Eres ${agentName}, un asistente útil.`,
       topics,
@@ -376,6 +376,6 @@ export async function importTopicYaml(yamlText: string, agentName = 'Agente impo
       source: 'copilot-studio-import',
     };
   }
-  await saveAgent(agent);
+  await saveAgent(tenantId, agent);
   return { agents: [{ id: agent.id, name: agent.name, topics: agent.topics?.length ?? 0, knowledge: agent.knowledge?.length ?? 0, actions: agent.actions?.length ?? 0 }], warnings };
 }

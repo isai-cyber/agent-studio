@@ -1,8 +1,8 @@
 // Base de conocimiento: trocea las fuentes del agente y recupera los fragmentos
 // más relevantes con BM25 (sin embeddings, así no depende de otro proveedor).
 import { readFile } from 'node:fs/promises';
-import { join } from 'node:path';
 import type { AgentDef } from './types.ts';
+import { resolveInside } from './tenancy/paths.ts';
 
 interface Chunk {
   source: string;
@@ -58,7 +58,7 @@ async function loadSources(agent: AgentDef, agentDir: string): Promise<{ source:
       if (k.type === 'text' && k.content) {
         out.push({ source: k.name ?? 'texto', text: k.content });
       } else if (k.type === 'file' && k.path) {
-        out.push({ source: k.name ?? k.path, text: await readFile(join(agentDir, k.path), 'utf8') });
+        out.push({ source: k.name ?? k.path, text: await readFile(resolveInside(agentDir, k.path), 'utf8') });
       } else if (k.type === 'url' && k.url) {
         const res = await fetch(k.url);
         const body = await res.text();
@@ -86,17 +86,20 @@ export async function buildIndex(agent: AgentDef, agentDir: string): Promise<Ind
   }
   const avgLen = chunks.reduce((a, c) => a + c.length, 0) / Math.max(chunks.length, 1);
   const index = { chunks, df, avgLen };
-  cache.set(agent.id, index);
+  cache.set(cacheKey(agent), index);
   return index;
 }
 
-export function invalidate(agentId: string): void {
-  cache.delete(agentId);
+// La caché va por empresa + agente: dos empresas pueden tener agentes con el mismo id
+const cacheKey = (agent: AgentDef) => `${agent.tenantId ?? 0}/${agent.id}`;
+
+export function invalidate(tenantId: number, agentId: string): void {
+  cache.delete(`${tenantId}/${agentId}`);
 }
 
 export async function search(agent: AgentDef, agentDir: string, query: string, k = 4): Promise<{ source: string; text: string }[]> {
   if (!agent.knowledge?.length) return [];
-  const index = cache.get(agent.id) ?? (await buildIndex(agent, agentDir));
+  const index = cache.get(cacheKey(agent)) ?? (await buildIndex(agent, agentDir));
   const q = tokenize(query);
   const N = index.chunks.length;
   const k1 = 1.4;

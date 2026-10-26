@@ -1,4 +1,4 @@
-// Definición de un agente. Se guarda como agents/<id>/agent.yaml
+// Definición de un agente. Se guarda como agents/<tenant_id>/<id>/agent.yaml
 
 export type Step =
   | { type: 'message'; text: string }
@@ -40,6 +40,7 @@ export interface ActionDef {
 
 export interface AgentDef {
   id: string;
+  tenantId?: number; // solo en memoria: empresa del agente (no se guarda en el YAML)
   name: string;
   description?: string;
   icon?: string;
@@ -75,6 +76,7 @@ export interface ToolCall {
 
 export interface Session {
   id: string;
+  tenantId: number;
   agentId: string;
   history: ChatMessage[];
   variables: Record<string, unknown>;

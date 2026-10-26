@@ -26,7 +26,7 @@ const SERVER_ARGS = [
   { key: 'args', label: 'Argumentos (solo stdio, separados por espacio)', type: 'string' as const, placeholder: '-y @modelcontextprotocol/server-filesystem /tmp' },
 ];
 
-function config(a: Record<string, any>): McpServerConfig {
+function config(a: Record<string, any>, tenantId: number): McpServerConfig {
   let headers: Record<string, string> = {};
   if (a.headers) headers = typeof a.headers === 'string' ? JSON.parse(a.headers) : a.headers;
   return {
@@ -35,6 +35,7 @@ function config(a: Record<string, any>): McpServerConfig {
     headers,
     command: a.command || undefined,
     args: a.args ? String(a.args).split(/\s+/).filter(Boolean) : [],
+    tenantId,
   };
 }
 
@@ -53,7 +54,7 @@ export default {
       key: 'list-tools', name: 'Ver herramientas del servidor', description: 'Lista las herramientas y sus parámetros. Úsalo para saber qué nombre poner en "Llamar herramienta".',
       arguments: SERVER_ARGS,
       async run(ctx) {
-        const tools = await listTools(config(ctx.args), false);
+        const tools = await listTools(config(ctx.args, ctx.tenant.id), false);
         return { total: tools.length, herramientas: tools.map((t) => ({ nombre: t.name, descripcion: t.description, parametros: Object.keys((t.inputSchema?.properties as object) ?? {}) })) };
       },
     },
@@ -66,7 +67,7 @@ export default {
       ],
       async run(ctx) {
         const args = typeof ctx.args.arguments === 'string' ? JSON.parse(ctx.args.arguments || '{}') : (ctx.args.arguments ?? {});
-        const r = await callTool(config(ctx.args), String(ctx.args.tool), args);
+        const r = await callTool(config(ctx.args, ctx.tenant.id), String(ctx.args.tool), args);
         if (r.isError) throw new Error(`La herramienta devolvió un error: ${r.text.slice(0, 300)}`);
         return r;
       },

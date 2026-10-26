@@ -45,3 +45,11 @@ export function tenantDataPath(tenantId: number, ...parts: string[]): string {
 export function tenantAgentsPath(tenantId: number, ...parts: string[]): string {
   return safeJoin(safeJoin(AGENTS_BASE, String(assertTenant(tenantId))), ...parts);
 }
+
+// Ruta relativa escrita por el usuario (p. ej. knowledge/faq.md en el YAML de un
+// agente): puede tener subcarpetas pero nunca salir de base.
+export function resolveInside(base: string, rel: string): string {
+  const full = resolve(base, String(rel ?? ''));
+  if (!full.startsWith(base + sep)) throw fail(400, `Ruta fuera de la carpeta del agente: ${String(rel).slice(0, 60)}`);
+  return full;
+}

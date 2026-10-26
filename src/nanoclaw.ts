@@ -6,12 +6,15 @@
 //   POST /api/messages  envía un mensaje
 //   GET  /events        stream SSE con las respuestas
 // Las instrucciones del agente se escriben en groups/<carpeta>/CLAUDE.md.
+// La carpeta incluye la empresa (web-<empresa>-<agente>) para que dos empresas
+// con agentes del mismo nombre no compartan grupo.
 import { readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { homedir } from 'node:os';
 import { join } from 'node:path';
 import type { AgentDef, Step } from './types.ts';
 import { agentDir } from './store.ts';
+import { resolveInside } from './tenancy/paths.ts';
 
 export const BACKEND = (process.env.AGENT_BACKEND ?? 'direct').toLowerCase(); // direct | nanoclaw
 const DIR = (process.env.NANOCLAW_DIR ?? join(homedir(), 'nanoclaw')).replace(/^~/, homedir());
@@ -101,7 +104,7 @@ async function knowledgeMarkdown(agent: AgentDef): Promise<string> {
     if (k.type === 'url' && k.url) parts.push(`### ${k.name ?? k.url}\n\nConsulta ${k.url} con tu herramienta web cuando la pregunta trate de este tema.`);
     if (k.type === 'file' && k.path) {
       try {
-        const text = await readFile(join(agentDir(agent.id), k.path), 'utf8');
+        const text = await readFile(resolveInside(agentDir(agent.tenantId!, agent.id), k.path), 'utf8');
         parts.push(`### ${k.name ?? k.path}\n\n${text.slice(0, 30_000).trim()}`);
       } catch {}
     }
@@ -111,7 +114,7 @@ async function knowledgeMarkdown(agent: AgentDef): Promise<string> {
 
 export async function buildClaudeMd(agent: AgentDef): Promise<string> {
   const sections = [
-    `<!-- Generado por Agent Studio a partir de agents/${agent.id}/agent.yaml. Edítalo allí: se sobrescribe al sincronizar. -->`,
+    `<!-- Generado por Agent Studio a partir de agents/${agent.tenantId}/${agent.id}/agent.yaml. Edítalo allí: se sobrescribe al sincronizar. -->`,
     `# ${agent.name}`,
     agent.description ? `> ${agent.description}` : '',
     `## Instrucciones\n\n${agent.instructions.trim()}`,
@@ -149,12 +152,18 @@ export interface NanoclawLink {
   syncedAt: string;
 }
 
-export async function syncAgent(agent: AgentDef): Promise<NanoclawLink> {
+// Nombre del grupo en NanoClaw: <empresa>-<agente> → carpeta web-<empresa>-<agente>
+export function groupName(tenantSlug: string, agent: AgentDef): string {
+  return `${tenantSlug}-${agent.id}`.slice(0, 64);
+}
+
+export async function syncAgent(agent: AgentDef, tenantSlug: string): Promise<NanoclawLink> {
+  const name = groupName(tenantSlug, agent);
   const res = await api<{ conversation: { conversationId: string } }>('/api/agents', {
     method: 'POST',
-    body: JSON.stringify({ name: agent.name.slice(0, 64), provider: PROVIDER, model: MODEL }),
+    body: JSON.stringify({ name, provider: PROVIDER, model: MODEL }),
   });
-  const folder = folderFor(agent.name.slice(0, 64));
+  const folder = folderFor(name);
   const groupDir = join(DIR, 'groups', folder);
   if (!existsSync(groupDir)) throw new Error(`NanoClaw creó el agente pero no existe ${groupDir}`);
   await writeFile(join(groupDir, 'CLAUDE.md'), await buildClaudeMd(agent), 'utf8');

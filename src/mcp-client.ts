@@ -14,6 +14,14 @@ export interface McpServerConfig {
   command?: string;
   args?: string[];
   env?: Record<string, string>;
+  tenantId?: number; // empresa que lo usa (stdio solo se permite en Default)
+}
+
+// Un servidor MCP por stdio ejecuta un programa en el servidor: solo lo puede usar
+// la empresa Default (el dueño de la instalación), salvo MCP_STDIO_ALL_TENANTS=true.
+export function assertStdioAllowed(cfg: McpServerConfig): void {
+  if (process.env.MCP_STDIO_ALL_TENANTS === 'true') return;
+  if (cfg.tenantId !== 1) throw Object.assign(new Error('Los servidores MCP locales (stdio) solo están permitidos en la empresa principal. Usa un servidor MCP por HTTP.'), { status: 403 });
 }
 
 export interface McpTool { name: string; description?: string; inputSchema?: Record<string, unknown> }
@@ -22,6 +30,7 @@ async function connect(cfg: McpServerConfig): Promise<Client> {
   const client = new Client({ name: 'agent-studio', version: '0.1.0' });
   const transport = cfg.transport ?? (cfg.command ? 'stdio' : 'http');
   if (transport === 'stdio') {
+    assertStdioAllowed(cfg);
     if (!cfg.command) throw new Error('Falta el comando del servidor MCP (p. ej. npx)');
     await client.connect(new StdioClientTransport({ command: cfg.command, args: cfg.args ?? [], env: { ...(process.env as Record<string, string>), ...(cfg.env ?? {}) } }));
   } else {

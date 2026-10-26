@@ -9,6 +9,7 @@ import { search } from './knowledge.ts';
 import { actionTools, runAction, toolName } from './actions.ts';
 import { agentDir, saveAgent } from './store.ts';
 import { useNanoclaw, syncAgent, send as nanoclawSend } from './nanoclaw.ts';
+import { tenantSlug } from './tenancy/tenants.ts';
 import { runTurn, timed, setRoute, type Channel } from './metrics.ts';
 import { bus } from './flows.ts';
 import { listTools as mcpListTools, callTool as mcpCallTool } from './mcp-client.ts';
@@ -25,16 +26,23 @@ export interface TurnResult {
   sources?: string[];
 }
 
-export function getSession(agentId: string, sessionId?: string): Session {
+export function tenantOf(agent: AgentDef): number {
+  if (!agent.tenantId) throw Object.assign(new Error('Agente sin empresa'), { status: 500 });
+  return agent.tenantId;
+}
+
+// Una sesión solo se reutiliza con la misma empresa y el mismo agente
+export function getSession(agent: AgentDef, sessionId?: string): Session {
+  const tenantId = tenantOf(agent);
   const existing = sessionId ? sessions.get(sessionId) : undefined;
-  if (existing && existing.agentId === agentId) return existing;
-  const s: Session = { id: randomUUID(), agentId, history: [], variables: {} };
+  if (existing && existing.agentId === agent.id && existing.tenantId === tenantId) return existing;
+  const s: Session = { id: randomUUID(), tenantId, agentId: agent.id, history: [], variables: {} };
   sessions.set(s.id, s);
   return s;
 }
 
-export function resetSession(sessionId: string): void {
-  sessions.delete(sessionId);
+export function resetSession(tenantId: number, sessionId: string): void {
+  if (sessions.get(sessionId)?.tenantId === tenantId) sessions.delete(sessionId);
 }
 
 // ---------- utilidades ----------
@@ -142,8 +150,8 @@ function matchOption(options: string[], answer: string): string | undefined {
 // (opencode → DeepSeek), que guarda su propio historial y conocimiento (CLAUDE.md).
 export async function ensureNanoclaw(agent: AgentDef): Promise<NonNullable<AgentDef['nanoclaw']>> {
   if (agent.nanoclaw?.conversationId) return agent.nanoclaw;
-  agent.nanoclaw = await syncAgent(agent);
-  await saveAgent(agent);
+  agent.nanoclaw = await syncAgent(agent, await tenantSlug(tenantOf(agent)));
+  await saveAgent(tenantOf(agent), agent);
   return agent.nanoclaw;
 }
 
@@ -155,7 +163,7 @@ async function generate(agent: AgentDef, session: Session, userText: string, ext
     const reply = await timed('nanoclaw', () => nanoclawSend(link.conversationId, prompt));
     return { text: reply.text, sources: ['NanoClaw'], options: reply.options };
   }
-  const dir = agentDir(agent.id);
+  const dir = agentDir(tenantOf(agent), agent.id);
   setRoute('generativa');
   const hits = useKnowledge ? await timed('conocimiento', () => search(agent, dir, userText)) : [];
   const knowledge = hits.length
@@ -173,7 +181,7 @@ async function generate(agent: AgentDef, session: Session, userText: string, ext
   const mcpSpecs: ToolSpec[] = [];
   for (const server of agent.mcpServers ?? []) {
     try {
-      for (const t of await timed('mcp', () => mcpListTools(server))) {
+      for (const t of await timed('mcp', () => mcpListTools({ ...server, tenantId: tenantOf(agent) }))) {
         const name = `mcp_${server.name}_${t.name}`.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64);
         mcp.set(name, { server, tool: t.name });
         mcpSpecs.push({ type: 'function', function: { name, description: `[${server.name}] ${t.description ?? t.name}`.slice(0, 1000), parameters: t.inputSchema ?? { type: 'object', properties: {} } } });
@@ -201,13 +209,13 @@ async function generate(agent: AgentDef, session: Session, userText: string, ext
       const out = viaMcp
         ? await timed('mcp', async () => {
             try {
-              const r = await mcpCallTool(viaMcp.server, viaMcp.tool, args);
+              const r = await mcpCallTool({ ...viaMcp.server, tenantId: tenantOf(agent) }, viaMcp.tool, args);
               return JSON.stringify({ isError: r.isError, text: r.text.slice(0, 12000), structured: r.structured });
             } catch (err) {
               return JSON.stringify({ error: (err as Error).message });
             }
           })
-        : action ? await timed('accion', () => runAction(action, args)) : JSON.stringify({ error: 'acción desconocida' });
+        : action ? await timed('accion', () => runAction(action, args, tenantOf(agent))) : JSON.stringify({ error: 'acción desconocida' });
       messages.push({ role: 'tool', tool_call_id: call.id, content: out });
     }
   }
@@ -245,7 +253,7 @@ async function runSteps(agent: AgentDef, session: Session, topicName: string, st
       case 'action': {
         const action = agent.actions?.find((a) => a.name === step.action);
         const args = Object.fromEntries(Object.entries(step.inputs ?? {}).map(([k, v]) => [k, render(v, session.variables)]));
-        const raw = action ? await timed('accion', () => runAction(action, args)) : JSON.stringify({ error: `Acción "${step.action}" no definida` });
+        const raw = action ? await timed('accion', () => runAction(action, args, tenantOf(agent))) : JSON.stringify({ error: `Acción "${step.action}" no definida` });
         if (step.saveAs) {
           try {
             const parsed = JSON.parse(raw);
@@ -286,14 +294,15 @@ async function runSteps(agent: AgentDef, session: Session, topicName: string, st
 
 // Cada turno se mide y registra en las métricas (tokens, coste, latencia, ruta)
 export async function handleTurn(agent: AgentDef, sessionId: string | undefined, userText: string, channel: Channel = 'ui'): Promise<TurnResult> {
-  const r = await runTurn({ agentId: agent.id, channel }, () => turn(agent, sessionId, userText));
-  // Aviso para las automatizaciones con el disparador "Un agente responde"
-  bus.emit('agent.turn', { agentId: agent.id, agentName: agent.name, sessionId: r.sessionId, channel, message: userText, reply: r.messages.join('\n\n'), topic: r.topic ?? null, options: r.options ?? [] });
+  const tenantId = tenantOf(agent);
+  const r = await runTurn({ tenantId, agentId: agent.id, channel }, () => turn(agent, sessionId, userText));
+  // Aviso para las automatizaciones con el disparador "Un agente responde" (solo de su empresa)
+  bus.emit('agent.turn', { tenantId, agentId: agent.id, agentName: agent.name, sessionId: r.sessionId, channel, message: userText, reply: r.messages.join('\n\n'), topic: r.topic ?? null, options: r.options ?? [] });
   return r;
 }
 
 async function turn(agent: AgentDef, sessionId: string | undefined, userText: string): Promise<TurnResult> {
-  const session = getSession(agent.id, sessionId);
+  const session = getSession(agent, sessionId);
   session.variables.botName ??= agent.name;
   const out: TurnResult = { sessionId: session.id, messages: [] };
   const text = userText.trim();

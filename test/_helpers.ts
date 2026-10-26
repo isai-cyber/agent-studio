@@ -9,7 +9,7 @@
 import { mkdtemp, mkdir } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import mariadb from 'mariadb';
+import mariadb, { type Connection } from 'mariadb';
 
 export interface TestEnv { dataDir: string; agentsDir: string; dbName: string | null }
 
@@ -64,6 +64,6 @@ export async function setupEnv(name: string, opts: { db?: boolean } = {}): Promi
 }
 
 // Conexión directa a la base de prueba (para preparar datos "antiguos" o comprobar tablas)
-export async function rawDb(dbName: string): Promise<mariadb.Connection> {
+export async function rawDb(dbName: string): Promise<Connection> {
   return mariadb.createConnection({ ...DB, database: dbName, bigIntAsNumber: true, insertIdAsNumber: true });
 }

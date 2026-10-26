@@ -18,22 +18,28 @@ export function actionTools(actions: ActionDef[] = []): ToolSpec[] {
   }));
 }
 
-function fill(template: string, args: Record<string, unknown>, encode: boolean): string {
+// {{env.X}} solo da acceso a variables FLOW_* del .env y solo en la empresa Default:
+// los secretos del servidor (DEEPSEEK_API_KEY, DB_PASSWORD...) nunca llegan a un agente.
+function envValue(name: string, tenantId: number): string {
+  return tenantId === 1 && name.startsWith('FLOW_') ? (process.env[name] ?? '') : '';
+}
+
+function fill(template: string, args: Record<string, unknown>, encode: boolean, tenantId: number): string {
   return template.replace(/\{\{\s*([\w.]+)\s*\}\}/g, (_, key: string) => {
-    if (key.startsWith('env.')) return process.env[key.slice(4)] ?? '';
+    if (key.startsWith('env.')) return envValue(key.slice(4), tenantId);
     const v = args[key];
     if (v === undefined || v === null) return '';
     return encode ? encodeURIComponent(String(v)) : String(v);
   });
 }
 
-export async function runAction(action: ActionDef, args: Record<string, unknown>): Promise<string> {
+export async function runAction(action: ActionDef, args: Record<string, unknown>, tenantId: number): Promise<string> {
   const method = action.method ?? 'POST';
   const usedInUrl = new Set([...action.url.matchAll(/\{\{\s*([\w]+)\s*\}\}/g)].map((m) => m[1]));
-  const url = new URL(fill(action.url, args, true));
+  const url = new URL(fill(action.url, args, true, tenantId));
   const rest = Object.fromEntries(Object.entries(args).filter(([k]) => !usedInUrl.has(k)));
   const headers: Record<string, string> = {};
-  for (const [k, v] of Object.entries(action.headers ?? {})) headers[k] = fill(v, args, false);
+  for (const [k, v] of Object.entries(action.headers ?? {})) headers[k] = fill(v, args, false, tenantId);
 
   let body: string | undefined;
   if (method === 'GET' || method === 'DELETE') {

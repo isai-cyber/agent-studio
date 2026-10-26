@@ -2,12 +2,12 @@
 // vez (tabla schema_migrations) y además está escrita para poder repetirse sin
 // romper nada (IF NOT EXISTS, INSERT IGNORE...), por si una se cortó a medias.
 // Se ejecutan al arrancar el servidor y con `npm run migrate:tenancy`.
-import type mariadb from 'mariadb';
+import type { PoolConnection } from 'mariadb';
 import { db } from './pool.ts';
 import { FEATURES } from '../features/registry.ts';
 import { SYSTEM_ROLES } from '../authz/permissions.ts';
 
-interface Migration { version: number; name: string; up: (c: mariadb.PoolConnection) => Promise<void | string> }
+interface Migration { version: number; name: string; up: (c: PoolConnection) => Promise<void | string> }
 
 const TABLE = 'ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci';
 
