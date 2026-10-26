@@ -12,6 +12,8 @@ import { textToSpeech } from './voice.ts';
 import { flowEnv, renderDeep, type StepContext } from './modules/sdk.ts';
 import { getAction, getTrigger } from './modules/registry.ts';
 import { getConnection } from './connections.ts';
+import { blockedFlowFeatures } from './features/enforce.ts';
+import { featureEvents } from './features/state.ts';
 
 const flowsDir = (t: number) => tenantDataPath(t, 'flows');
 const flowFile = (t: number, id: string) => tenantDataPath(t, 'flows', `${safeId(id)}.json`);
@@ -34,7 +36,7 @@ export interface Flow {
   paused?: { features: string[]; reason: string; since: string };
 }
 export interface RunStep { id: string; name: string; status: 'ok' | 'error' | 'omitido' | 'filtrado'; ms: number; output?: unknown; error?: string }
-export interface Run { id: string; flowId: string; ts: string; source: string; status: 'ok' | 'error' | 'filtrado'; ms: number; trigger: unknown; steps: RunStep[] }
+export interface Run { id: string; flowId: string; ts: string; source: string; status: 'ok' | 'error' | 'filtrado'; ms: number; trigger: unknown; steps: RunStep[]; blocked?: string[] }
 
 // Bus de eventos internos (p. ej. 'agent.turn' cuando un agente responde)
 export const bus = new EventEmitter();
@@ -154,7 +156,15 @@ export async function runFlow(flow: Flow, triggerPayload: unknown, source: strin
   const vars: { trigger: unknown; steps: Record<string, unknown> } = { trigger: triggerPayload ?? {}, steps: {} };
   const run: Run = { id: randomUUID().slice(0, 8), flowId: flow.id, ts: new Date().toISOString(), source, status: 'ok', ms: 0, trigger: trim(triggerPayload), steps: [] };
 
-  for (const step of flow.steps) {
+  // Si algún paso usa un módulo desactivado, no se ejecuta nada (ni siquiera los pasos previos)
+  const blocked = await blockedFlowFeatures(tenantId, flow);
+  if (blocked.length) {
+    run.status = 'error';
+    run.steps.push({ id: 'modulos', name: 'Comprobar módulos', status: 'error', ms: 0, error: blocked.map((b) => b.message).join(' ') });
+    run.blocked = blocked.map((b) => b.feature);
+  }
+
+  for (const step of blocked.length ? [] : flow.steps) {
     const action = getAction(step.module, step.key);
     const name = step.name || `${step.module}.${step.key}`;
     // Pasos desactivados o aún sin app elegida (borrador): se omiten
@@ -206,10 +216,32 @@ async function readState(tenantId: number): Promise<Record<string, { last?: numb
   try { return JSON.parse(await readFile(stateFile(tenantId), 'utf8')); } catch { return {}; }
 }
 
+// Los flujos programados que usan un módulo desactivado quedan en pausa (no se
+// borran) y se reanudan solos al reactivarlo.
+export async function syncPausedFlows(tenantId: number): Promise<{ paused: string[]; resumed: string[] }> {
+  const out = { paused: [] as string[], resumed: [] as string[] };
+  for (const flow of await listFlows(tenantId)) {
+    const trig = flow.trigger ? getTrigger(flow.trigger.module, flow.trigger.key) : undefined;
+    const scheduled = trig?.type === 'schedule' || trig?.type === 'poll';
+    const blocked = flow.active && scheduled ? await blockedFlowFeatures(tenantId, flow) : [];
+    if (blocked.length && !flow.paused) {
+      flow.paused = { features: blocked.map((b) => b.feature), reason: blocked.map((b) => b.message).join(' '), since: new Date().toISOString() };
+      await saveFlow(tenantId, flow);
+      out.paused.push(flow.id);
+    } else if (!blocked.length && flow.paused) {
+      delete flow.paused;
+      await saveFlow(tenantId, flow);
+      out.resumed.push(flow.id);
+    }
+  }
+  return out;
+}
+
 async function tickTenant(tenantId: number, now: number): Promise<void> {
   const state = await readState(tenantId);
+  await syncPausedFlows(tenantId);
   for (const flow of await listFlows(tenantId)) {
-    if (!flow.active || !flow.trigger) continue;
+    if (!flow.active || !flow.trigger || flow.paused) continue;
     const trig = getTrigger(flow.trigger.module, flow.trigger.key);
     if (!trig || (trig.type !== 'schedule' && trig.type !== 'poll')) continue;
     const every = Math.max(1, Number(flow.trigger.args?.everyMinutes ?? 15));
@@ -256,6 +288,10 @@ export async function tick(): Promise<void> {
 
 export function startScheduler(): void {
   setInterval(() => void tick(), 30_000).unref();
+  // Al desactivar o reactivar un módulo, los flujos programados se pausan o reanudan al momento
+  const resync = (e: { tenantId: number }) => void syncPausedFlows(e.tenantId).catch((err) => console.warn('[flujos] pausa:', err.message));
+  featureEvents.on('disabled', resync);
+  featureEvents.on('enabled', resync);
   // Eventos internos: cada vez que un agente responde (solo flujos de su empresa)
   bus.on('agent.turn', async (e: { tenantId: number; agentId: string; topic?: string | null }) => {
     try {

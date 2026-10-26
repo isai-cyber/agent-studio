@@ -14,6 +14,7 @@ import { runTurn, timed, setRoute, type Channel } from './metrics.ts';
 import { bus } from './flows.ts';
 import { listTools as mcpListTools, callTool as mcpCallTool } from './mcp-client.ts';
 import type { ToolSpec } from './llm.ts';
+import { featureToolsFor, isFeatureTool, runFeatureTool } from './features/enforce.ts';
 
 const sessions = new Map<string, Session>();
 const MAX_HISTORY = 30;
@@ -190,7 +191,10 @@ async function generate(agent: AgentDef, session: Session, userText: string, ext
       console.warn(`[mcp] ${server.name}:`, (err as Error).message);
     }
   }
-  const tools = [...actionTools(agent.actions), ...mcpSpecs];
+  // Herramientas de los módulos de negocio: solo las de módulos activos y configurados
+  const featureSpecs = await featureToolsFor(tenantOf(agent));
+  const featureNames = new Set(featureSpecs.map((t) => t.function.name));
+  const tools = [...actionTools(agent.actions).filter((t) => !isFeatureTool(t.function.name)), ...mcpSpecs, ...featureSpecs];
   const messages: ChatMessage[] = [system, ...session.history.slice(-MAX_HISTORY)];
 
   for (let i = 0; i < 5; i++) {
@@ -206,7 +210,11 @@ async function generate(agent: AgentDef, session: Session, userText: string, ext
         args = JSON.parse(call.function.arguments || '{}');
       } catch {}
       const viaMcp = mcp.get(call.function.name);
-      const out = viaMcp
+      // Una herramienta de módulo se ejecuta (o se rechaza y audita) siempre por su módulo,
+      // aunque el modelo la invente sin que estuviera en la lista
+      const out = isFeatureTool(call.function.name) || featureNames.has(call.function.name)
+        ? await timed('modulo', () => runFeatureTool({ tenantId: tenantOf(agent), agentId: agent.id, sessionId: session.id, name: call.function.name, args }))
+        : viaMcp
         ? await timed('mcp', async () => {
             try {
               const r = await mcpCallTool({ ...viaMcp.server, tenantId: tenantOf(agent) }, viaMcp.tool, args);
