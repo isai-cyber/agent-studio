@@ -39,6 +39,12 @@
       <button data-view="connect" title="Conectar (API y MCP)" aria-label="Conectar (API y MCP)">
         <svg viewBox="0 0 24 24"><path d="M9 7V3m6 4V3M7 7h10v4a5 5 0 0 1-10 0zM12 16v5"/></svg>
       </button>
+      <button data-view="settings" title="Configuración" aria-label="Configuración" hidden>
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
+      </button>
+      <button data-view="platform" title="Superadmin: empresas y planes" aria-label="Superadmin: empresas y planes" hidden>
+        <svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6M9 11h.01M15 11h.01"/></svg>
+      </button>
     </nav>
     <div id="user-menu" class="user-menu" hidden></div>
     <div class="rail-status" tabindex="0" aria-label="Estado de los servicios">
@@ -48,6 +54,9 @@
   </aside>
 
   <main>
+    <!-- Empresa activa (selector) y aviso de modo soporte -->
+    <div id="tenant-bar" class="tenant-bar" hidden></div>
+
     <!-- Inicio -->
     <section id="view-home" class="view active home">
       <div class="home-wrap">
@@ -203,19 +212,40 @@
       <header class="view-head"><h1>Conectar con otras apps</h1></header>
       <p class="muted">Usa tus agentes desde cualquier app con la API REST, el endpoint compatible con OpenAI o MCP (Claude Desktop, Cursor, opencode, n8n…).</p>
       <div class="card pad">
-        <h3>Clave de API</h3>
-        <div class="row" style="margin:0">
-          <input id="api-key" readonly />
-          <button id="copy-key" class="ghost">Copiar</button>
-          <button id="rotate-key" class="danger">Regenerar</button>
-        </div>
-        <p class="muted">Envíala como <code>Authorization: Bearer &lt;clave&gt;</code> o <code>X-Api-Key</code>. No la compartas: da acceso a todos tus agentes.</p>
+        <h3>Claves de API</h3>
+        <p class="muted">Cada clave es de tu empresa y solo puede hacer lo que marques al crearla (sus <i>scopes</i>). Envíala como <code>Authorization: Bearer &lt;clave&gt;</code> o <code>X-Api-Key</code>. En los ejemplos, cambia <code>TU_CLAVE</code> por la tuya.</p>
+        <div class="row" style="margin:0"><button id="goto-keys" class="primary">Gestionar claves de API</button><span id="hooks-base" class="muted small"></span></div>
       </div>
       <div class="connect-grid">
         <div class="card pad"><h3>API REST</h3><p class="muted">Documentación: <a id="openapi-link" target="_blank">/v1/openapi.json</a></p><pre id="snip-rest" class="result snip"></pre></div>
         <div class="card pad"><h3>Compatible con OpenAI</h3><p class="muted">Base URL <code>/v1</code> y <code>model</code> = id del agente. Sirve para n8n, Make, LangChain, apps de chat…</p><pre id="snip-openai" class="result snip"></pre></div>
         <div class="card pad"><h3>MCP por HTTP</h3><p class="muted">Para clientes que admiten servidores MCP remotos.</p><pre id="snip-mcp-http" class="result snip"></pre></div>
         <div class="card pad"><h3>MCP por stdio</h3><p class="muted">Claude Desktop, Cursor u opencode lanzan el proceso ellos mismos.</p><pre id="snip-mcp-stdio" class="result snip"></pre></div>
+      </div>
+    </section>
+
+    <!-- Configuración de la empresa -->
+    <section id="view-settings" class="view">
+      <header class="view-head">
+        <h1>Configuración</h1>
+        <span id="set-tenant" class="muted small"></span>
+      </header>
+      <div id="set-tabs" class="seg set-tabs" role="tablist"></div>
+      <div id="set-body" class="set-body"></div>
+    </section>
+
+    <!-- Superadmin -->
+    <section id="view-platform" class="view">
+      <header class="view-head"><h1>Empresas y planes</h1></header>
+      <div id="plat-tabs" class="seg set-tabs" role="tablist"></div>
+      <div id="plat-body" class="set-body"></div>
+    </section>
+
+    <!-- Sin empresa -->
+    <section id="view-notenant" class="view">
+      <div class="card pad notenant">
+        <h1>Aún no perteneces a ninguna empresa</h1>
+        <p class="muted">Pide a quien administra tu empresa en Agent Studio que te invite. Si ya tienes un enlace de invitación, ábrelo para unirte.</p>
       </div>
     </section>
 

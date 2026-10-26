@@ -1,7 +1,10 @@
 import { initMetrics, load as loadMetrics } from './metrics.js';
-import { initFlows, loadFlowsView, loadModulesView, openFlowById } from './flows.js';
+import { initFlows, loadFlowsView, loadModulesView, openFlowById, openAppDetail, setTenantSlug } from './flows.js';
 import { initAssistant } from './assistant.js';
 import { ensureAuth, sessionExpired } from './auth.js';
+import { ctx, loadContext, can, isPlatformAdmin } from './context.js';
+import { initSettings, loadSettingsView } from './settings.js';
+import { initPlatform, loadPlatformView } from './admin.js';
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -13,7 +16,8 @@ async function api(path, opts = {}) {
   const type = res.headers.get('content-type') ?? '';
   const body = type.includes('json') ? await res.json() : type.startsWith('audio') ? await res.blob() : await res.text();
   if (res.status === 401 && !path.startsWith('/api/auth/')) sessionExpired();
-  if (!res.ok) throw new Error(body?.error ?? body ?? res.statusText);
+  // El error lleva el cuerpo (p. ej. qué dependencias faltan al activar un módulo)
+  if (!res.ok) throw Object.assign(new Error(body?.error ?? body ?? res.statusText), { status: res.status, body });
   return body;
 }
 const post = (path, data) => api(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data ?? {}) });
@@ -23,7 +27,8 @@ let sessionId = null;
 let status = {};
 
 // ---------- navegación ----------
-function show(view) {
+function show(view, sub) {
+  if (ctx && !ctx.tenant && view !== 'notenant') view = 'notenant';
   $$('.view').forEach((v) => v.classList.toggle('active', v.id === `view-${view}`));
   $$('.rail nav button').forEach((b) => b.classList.toggle('active', b.dataset.view === view));
   if (view === 'home') loadHome();
@@ -33,6 +38,60 @@ function show(view) {
   if (view === 'metrics') loadMetrics(api);
   if (view === 'flows') loadFlowsView();
   if (view === 'modules') loadModulesView();
+  if (view === 'settings') loadSettingsView(sub);
+  if (view === 'platform') loadPlatformView(sub);
+}
+
+// ---------- empresa activa, menú según permisos y módulos ----------
+// (solo es interfaz: el servidor valida siempre)
+const NAV_PERMS = {
+  home: () => true,
+  agents: () => can('agents.read'),
+  catalog: () => can('agents.manage'),
+  import: () => can('agents.manage'),
+  flows: () => can('flows.read'),
+  modules: () => can('flows.read'),
+  metrics: () => can('metrics.read'),
+  connect: () => can('agents.read'),
+  settings: () => Boolean(ctx?.tenant),
+  platform: () => isPlatformAdmin() && !ctx?.local,
+};
+
+function renderTenantBar() {
+  const bar = $('#tenant-bar');
+  if (!ctx?.tenant || ctx.local) { bar.hidden = true; return; }
+  const many = ctx.tenants.length > 1;
+  bar.hidden = false;
+  bar.innerHTML = `${ctx.support ? `<span class="support-badge">🛟 Modo soporte en <b>${esc(ctx.tenant.name)}</b> (queda en su auditoría)</span><button class="ghost" id="support-exit">Salir del modo soporte</button>` : ''}
+    <label class="tenant-pick" title="Empresa activa">🏢 ${many && !ctx.support
+      ? `<select id="tenant-select" aria-label="Empresa activa">${ctx.tenants.map((t) => `<option value="${t.tenantId}" ${t.tenantId === ctx.tenant.id ? 'selected' : ''}>${esc(t.name)}</option>`).join('')}</select>`
+      : `<b>${esc(ctx.tenant.name)}</b>`}
+    <span class="pill-sm">${esc(ctx.role?.name ?? '')}</span></label>`;
+  $('#tenant-select')?.addEventListener('change', async (e) => {
+    await post('/api/me/tenant', { tenantId: Number(e.target.value) });
+    location.reload();
+  });
+  $('#support-exit')?.addEventListener('click', async () => {
+    await post('/api/platform/support/exit');
+    location.reload();
+  });
+}
+
+function applyContext() {
+  for (const b of $$('.rail nav button')) b.hidden = !(NAV_PERMS[b.dataset.view] ?? (() => true))();
+  $('#new-agent').hidden = !can('agents.manage');
+  $('#delete-agent').hidden = !can('agents.manage');
+  $('#save-yaml').hidden = !can('agents.manage');
+  $('#flow-new').hidden = !can('flows.manage');
+  $('#quick-form').hidden = !can('agents.manage');
+  $('#asst-fab').hidden = !can('flows.manage');
+  renderTenantBar();
+}
+
+export async function refreshContext() {
+  await loadContext(api);
+  setTenantSlug(ctx?.tenant?.slug);
+  applyContext();
 }
 $$('.rail nav button').forEach((b) => (b.onclick = () => show(b.dataset.view)));
 // El marketplace crea una automatización con una app y la abre en el editor
@@ -358,10 +417,12 @@ async function loadHome() {
 
 // ---------- conectar ----------
 async function loadConnect() {
-  const { apiKey, baseUrl, root } = await api('/api/connect');
+  const { baseUrl, root, tenantSlug } = await api('/api/connect');
+  const apiKey = 'TU_CLAVE';
   const agents = await api('/api/agents');
   const agentId = agents[0]?.id ?? 'mi-agente';
-  $('#api-key').value = apiKey;
+  $('#goto-keys').hidden = !can('tenant.apikeys.manage');
+  $('#hooks-base').innerHTML = `Webhooks de tu empresa: <code>${esc(baseUrl)}/hooks/${esc(tenantSlug)}/&lt;id-del-flujo&gt;</code>`;
   $('#openapi-link').href = `${baseUrl}/v1/openapi.json`;
   $('#openapi-link').textContent = `${baseUrl}/v1/openapi.json`;
   $('#snip-rest').textContent = `curl ${baseUrl}/v1/agents/${agentId}/chat \\
@@ -382,7 +443,7 @@ print(r.choices[0].message.content)`;
     2,
   );
   $('#snip-mcp-stdio').textContent = JSON.stringify(
-    { mcpServers: { 'agent-studio': { command: 'npm', args: ['--prefix', root, 'run', '-s', 'mcp'] } } },
+    { mcpServers: { 'agent-studio': { command: 'npm', args: ['--prefix', root, 'run', '-s', 'mcp'], env: { AGENT_STUDIO_MCP_KEY: apiKey } } } },
     null,
     2,
   );
@@ -395,20 +456,25 @@ const copy = async (text, el) => {
     setTimeout(() => (el.textContent = old), 1200);
   }
 };
-$('#copy-key').onclick = (e) => copy($('#api-key').value, e.currentTarget);
 $$('.snip').forEach((pre) => (pre.onclick = () => copy(pre.textContent, pre)));
-$('#rotate-key').onclick = async () => {
-  if (!confirm('¿Regenerar la clave? Las apps conectadas dejarán de funcionar hasta que pongas la nueva.')) return;
-  await post('/api/connect/rotate');
-  loadConnect();
-};
+$('#goto-keys').onclick = () => show('settings', 'apikeys');
+// "Falta conectar X" en un módulo de negocio abre esa app en el marketplace
+document.addEventListener('as:open-app', async (e) => {
+  show('modules');
+  await openAppDetail(e.detail);
+});
 
 initMetrics(api);
 initFlows(api, post);
+initSettings(api, post, refreshContext, show);
+initPlatform(api, post, () => location.reload());
 // El asistente toma el control de la caja de Inicio: escribir → onboarding → editor del flujo
 initAssistant(post, show);
 // Primero la sesión (usuarios en MariaDB); luego se carga la app
-ensureAuth(() => {
+ensureAuth(async () => {
+  try { await refreshContext(); } catch (e) { console.warn('contexto:', e.message); }
   loadStatus();
-  loadHome();
+  if (ctx && !ctx.tenant) return show('notenant');
+  if (can('agents.read')) loadHome();
+  else $('#recent-list').innerHTML = '';
 });
