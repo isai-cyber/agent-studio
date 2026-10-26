@@ -5,50 +5,19 @@
 // Se activa al definir DB_HOST (ver .env.example); sin él, la app funciona sin login.
 import { randomBytes, scrypt as scryptCb, timingSafeEqual, createHash, type ScryptOptions } from 'node:crypto';
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import mariadb from 'mariadb';
+import { db, dbEnabled } from './db/pool.ts';
+import { runMigrations } from './db/migrations.ts';
 
-export const authEnabled = Boolean(process.env.DB_HOST);
+export const authEnabled = dbEnabled;
 const SIGNUP_OPEN = process.env.AUTH_ALLOW_SIGNUP !== 'false';
 const COOKIE = 'as_session';
 const SESSION_DAYS = 30;
 
 export interface User { id: number; email: string; name: string; role: 'admin' | 'user'; created_at?: Date }
 
-let pool: mariadb.Pool | null = null;
-function db(): mariadb.Pool {
-  pool ??= mariadb.createPool({
-    host: process.env.DB_HOST,
-    port: Number(process.env.DB_PORT ?? 3306),
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME ?? 'agent_studio',
-    connectionLimit: 5,
-    bigIntAsNumber: true,
-    insertIdAsNumber: true,
-  });
-  return pool;
-}
-
 export async function initAuth(): Promise<void> {
   if (!authEnabled) return;
-  await db().query(`CREATE TABLE IF NOT EXISTS users (
-    id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
-    email VARCHAR(190) NOT NULL UNIQUE,
-    name VARCHAR(80) NOT NULL,
-    password_hash VARCHAR(255) NOT NULL,
-    role ENUM('admin','user') NOT NULL DEFAULT 'user',
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    last_login_at TIMESTAMP NULL
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
-  await db().query(`CREATE TABLE IF NOT EXISTS sessions (
-    token_hash CHAR(64) PRIMARY KEY,
-    user_id INT UNSIGNED NOT NULL,
-    created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    expires_at TIMESTAMP NOT NULL,
-    user_agent VARCHAR(255) NULL,
-    INDEX (user_id), INDEX (expires_at),
-    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  await runMigrations((m) => console.log(m));
   await db().query('DELETE FROM sessions WHERE expires_at < NOW()');
 }
 

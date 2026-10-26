@@ -9,7 +9,9 @@
     "import": "node --env-file-if-exists=.env src/cli-import.ts",
     "mcp": "node --env-file-if-exists=.env src/mcp-stdio.ts",
     "build:datasets": "node scripts/build-dataset-agents.ts",
-    "build:catalog": "node scripts/build-catalog.ts"
+    "build:catalog": "node scripts/build-catalog.ts",
+    "migrate:tenancy": "node --env-file-if-exists=.env scripts/migrate-tenancy.ts",
+    "test": "node --test --test-concurrency=1 --test-timeout=120000 'test/**/*.test.ts'"
   },
   "engines": {
     "node": ">=22.18"
