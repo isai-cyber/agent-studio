@@ -1,6 +1,9 @@
 // Servidor MCP: expone los agentes como herramientas para Claude Desktop, Cursor,
-// opencode, n8n o cualquier cliente MCP. Se sirve por HTTP en /mcp (server.ts)
+// opencode, n8n o cualquier cliente MCP. Se sirve por HTTP en /mcp (public-api.ts)
 // y por stdio con `npm run mcp` (mcp-stdio.ts).
+//
+// Va por empresa: solo se registran las herramientas que permiten los scopes de
+// la clave, y cada herramienta lo vuelve a comprobar con can() al ejecutarse.
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { z } from 'zod';
 import YAML from 'yaml';
@@ -9,6 +12,8 @@ import { join } from 'node:path';
 import { listAgents, getAgent, saveAgent, uniqueId, ROOT } from './store.ts';
 import { handleTurn, resetSession } from './engine.ts';
 import type { AgentDef } from './types.ts';
+import type { Ctx } from './authz/context.ts';
+import { assertCan } from './authz/can.ts';
 
 const text = (value: unknown) => ({
   content: [{ type: 'text' as const, text: typeof value === 'string' ? value : JSON.stringify(value, null, 2) }],
@@ -26,17 +31,28 @@ async function templates(): Promise<AgentDef[]> {
   return (YAML.parse(await readFile(join(ROOT, 'catalog', 'catalog.yaml'), 'utf8')) as { templates: AgentDef[] }).templates;
 }
 
-export function createMcpServer(tenantId: number): McpServer {
+export function createMcpServer(ctx: Ctx): McpServer {
+  const tenantId = ctx.tenantId;
   const server = new McpServer({ name: 'agent-studio', version: '0.1.0' });
+  // Registra la herramienta solo si la clave tiene el permiso, y lo revisa al llamarla
+  const tool = ((name: string, perm: string, def: unknown, run: (args: any) => Promise<any>) => {
+    if (!ctx.permissions.has(perm)) return;
+    (server.registerTool as any)(name, def, async (args: unknown) => {
+      await assertCan(ctx, { permission: perm });
+      return run(args);
+    });
+  });
 
-  server.registerTool(
+  tool(
     'list_agents',
+    'agents.read',
     { title: 'Listar agentes', description: 'Lista los agentes disponibles en Agent Studio con su id, descripción y temas.', inputSchema: {} },
     async () => text((await listAgents(tenantId)).map(summary)),
   );
 
-  server.registerTool(
+  tool(
     'get_agent',
+    'agents.read',
     {
       title: 'Ver agente',
       description: 'Devuelve la definición completa de un agente: instrucciones, temas, conocimiento y acciones.',
@@ -45,8 +61,9 @@ export function createMcpServer(tenantId: number): McpServer {
     async ({ agent_id }) => text(await getAgent(tenantId, agent_id)),
   );
 
-  server.registerTool(
+  tool(
     'chat_with_agent',
+    'agents.read',
     {
       title: 'Hablar con un agente',
       description:
@@ -63,8 +80,9 @@ export function createMcpServer(tenantId: number): McpServer {
     },
   );
 
-  server.registerTool(
+  tool(
     'create_agent',
+    'agents.manage',
     {
       title: 'Crear agente',
       description: 'Crea un agente nuevo a partir de un nombre y unas instrucciones.',
@@ -81,14 +99,16 @@ export function createMcpServer(tenantId: number): McpServer {
     },
   );
 
-  server.registerTool(
+  tool(
     'list_templates',
+    'agents.read',
     { title: 'Listar plantillas', description: 'Lista las plantillas de la biblioteca de escenarios (por función e industria).', inputSchema: {} },
     async () => text((await templates()).map((t) => ({ id: t.id, name: t.name, description: t.description, category: t.category }))),
   );
 
-  server.registerTool(
+  tool(
     'create_agent_from_template',
+    'agents.manage',
     {
       title: 'Crear agente desde plantilla',
       description: 'Crea un agente copiando una plantilla de la biblioteca.',
@@ -102,8 +122,9 @@ export function createMcpServer(tenantId: number): McpServer {
     },
   );
 
-  server.registerTool(
+  tool(
     'reset_conversation',
+    'agents.read',
     {
       title: 'Reiniciar conversación',
       description: 'Olvida el historial de una sesión de chat.',

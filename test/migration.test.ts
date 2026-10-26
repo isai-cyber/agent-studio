@@ -104,6 +104,27 @@ test('es repetible: la segunda vez no mueve ni respalda nada', async () => {
   }
 });
 
+test('después de migrar todo funciona igual en la empresa Default', async () => {
+  const store = await import('../src/store.ts');
+  const conns = await import('../src/connections.ts');
+  const flows = await import('../src/flows.ts');
+  const metrics = await import('../src/metrics.ts');
+  const agent = await store.getAgent(1, 'demo');
+  assert.equal(agent.name, 'Demo');
+  assert.equal((await conns.getConnection(1, 'slack')).token, SECRET);
+  assert.equal((await conns.getConnection(1, 'jira')).site, 'x.atlassian.net');
+  assert.equal((await flows.getFlow(1, 'abc12345')).name, 'Flujo');
+  assert.equal((await flows.listRuns(1, 'abc12345')).length, 1);
+  assert.equal((await metrics.readEvents(1)).events.length, 1);
+  if (hasDb) {
+    // La clave global antigua sigue funcionando, ahora como clave de Default
+    const { verifyApiKey } = await import('../src/tenancy/apikeys.ts');
+    const auth = await verifyApiKey({ headers: { authorization: `Bearer ${LEGACY_KEY}` } } as never);
+    assert.equal(auth?.tenantId, 1);
+    assert.ok(auth?.permissions.has('agents.manage') && auth.permissions.has('flows.manage'));
+  }
+});
+
 test('la auditoría no se puede modificar ni borrar', { skip: !hasDb }, async () => {
   const c = await rawDb(env.dbName!);
   await assert.rejects(c.query("UPDATE audit_log SET action = 'x'"), /solo lectura/);

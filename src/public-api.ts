@@ -2,7 +2,9 @@
 //   /v1/...                 REST (documentada en /v1/openapi.json)
 //   /v1/chat/completions    compatible con OpenAI (model = id del agente)
 //   /mcp                    servidor MCP por HTTP (Streamable HTTP)
-// Todo requiere la clave de API salvo /v1/openapi.json. CORS abierto para apps web.
+// Todo requiere una clave de API salvo /v1/openapi.json. La clave es de una empresa
+// y solo da los permisos de sus scopes (se comprueban con can() en cada ruta).
+// CORS abierto para apps web.
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -14,11 +16,13 @@ import { handleTurn, resetSession } from './engine.ts';
 import { textToSpeech } from './voice.ts';
 import { recordTts, readEvents } from './metrics.ts';
 import { aggregate } from './metrics-report.ts';
-import { isAuthorized } from './apikey.ts';
+import { verifyApiKey } from './tenancy/apikeys.ts';
+import { contextForApiKey, type Ctx } from './authz/context.ts';
+import { can } from './authz/can.ts';
+import { ipOf } from './http.ts';
 import { createMcpServer } from './mcp.ts';
 import { openapi } from './openapi.ts';
 import type { AgentDef } from './types.ts';
-import { DEFAULT_TENANT_ID } from './tenancy/paths.ts';
 
 const CORS = {
   'Access-Control-Allow-Origin': '*',
@@ -66,14 +70,14 @@ async function templates(): Promise<AgentDef[]> {
 
 // ---------- MCP por HTTP (sin estado: un servidor por petición) ----------
 
-async function handleMcp(req: IncomingMessage, res: ServerResponse, tenantId: number): Promise<void> {
+async function handleMcp(req: IncomingMessage, res: ServerResponse, ctx: Ctx): Promise<void> {
   for (const [k, v] of Object.entries(CORS)) res.setHeader(k, v);
   if (req.method !== 'POST') {
     // Modo sin sesión: no hay stream GET ni cierre de sesión
     return send(res, 405, { jsonrpc: '2.0', error: { code: -32000, message: 'Usa POST en /mcp' }, id: null });
   }
   const body = await readJson<unknown>(req);
-  const server = createMcpServer(tenantId);
+  const server = createMcpServer(ctx);
   const transport = new StreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
   res.on('close', () => {
     void transport.close();
@@ -141,14 +145,21 @@ export async function handlePublic(req: IncomingMessage, res: ServerResponse, pa
     send(res, 200, openapi(`http://${req.headers.host ?? 'localhost:3000'}`));
     return true;
   }
-  if (!isAuthorized(req)) {
-    send(res, 401, { error: 'Falta la clave de API o no es válida. Usa "Authorization: Bearer <clave>" o "X-Api-Key".' });
+  const key = await verifyApiKey(req);
+  if (!key) {
+    send(res, 401, { error: 'Falta la clave de API o no es válida (o fue revocada). Usa "Authorization: Bearer <clave>" o "X-Api-Key".' });
     return true;
   }
-  // La clave global de esta fase es la de la empresa Default
-  const tenantId = DEFAULT_TENANT_ID;
+  const ctx = await contextForApiKey(key, ipOf(req));
+  const tenantId = ctx.tenantId;
+  // Cada ruta pide un permiso: la clave debe tenerlo en sus scopes
+  const allow = async (permission: string, feature?: string) => {
+    const d = await can(ctx, { permission, feature });
+    if (!d.ok) send(res, d.status, { error: d.message, code: d.code });
+    return d.ok;
+  };
   if (path === '/mcp') {
-    await handleMcp(req, res, tenantId);
+    if (await allow('agents.read')) await handleMcp(req, res, ctx);
     return true;
   }
 
@@ -156,29 +167,38 @@ export async function handlePublic(req: IncomingMessage, res: ServerResponse, pa
   let p: RegExpMatchArray | null;
 
   if (req.method === 'GET' && path === '/v1/agents') {
+    if (!(await allow('agents.read'))) return true;
     send(res, 200, { data: (await listAgents(tenantId)).map(publicAgent) });
   } else if (req.method === 'POST' && path === '/v1/agents') {
+    if (!(await allow('agents.manage'))) return true;
+    if (ctx.plan.maxAgents !== null && (await listAgents(tenantId)).length >= ctx.plan.maxAgents) return send(res, 403, { error: `Tu plan permite ${ctx.plan.maxAgents} agentes` }), true;
     const b = await readJson<Partial<AgentDef>>(req);
     if (!b.name || !b.instructions) return send(res, 400, { error: 'Se requieren "name" e "instructions"' }), true;
     const agent = await saveAgent(tenantId, { ...b, id: await uniqueId(tenantId, b.name), name: b.name, instructions: b.instructions } as AgentDef);
     send(res, 201, publicAgent(agent));
   } else if (req.method === 'GET' && (p = m(/^\/v1\/agents\/([^/]+)$/))) {
+    if (!(await allow('agents.read'))) return true;
     send(res, 200, publicAgent(await getAgent(tenantId, decodeURIComponent(p[1]))));
   } else if (req.method === 'POST' && (p = m(/^\/v1\/agents\/([^/]+)\/chat$/))) {
+    if (!(await allow('agents.read'))) return true;
     const b = await readJson<{ message?: string; session_id?: string }>(req);
     const r = await handleTurn(await getAgent(tenantId, decodeURIComponent(p[1])), b.session_id, b.message ?? '', 'api');
     send(res, 200, { session_id: r.sessionId, messages: r.messages, reply: r.messages.join('\n\n'), options: r.options ?? [], topic: r.topic ?? null, sources: r.sources ?? [] });
   } else if (req.method === 'DELETE' && (p = m(/^\/v1\/sessions\/([^/]+)$/))) {
+    if (!(await allow('agents.read'))) return true;
     resetSession(tenantId, decodeURIComponent(p[1]));
     res.writeHead(204, CORS);
     res.end();
   } else if (req.method === 'GET' && path === '/v1/templates') {
+    if (!(await allow('agents.read'))) return true;
     send(res, 200, { data: (await templates()).map((t) => ({ id: t.id, name: t.name, description: t.description, category: t.category })) });
   } else if (req.method === 'POST' && (p = m(/^\/v1\/templates\/([^/]+)\/use$/))) {
+    if (!(await allow('agents.manage'))) return true;
     const tpl = (await templates()).find((t) => t.id === decodeURIComponent(p![1]));
     if (!tpl) return send(res, 404, { error: 'Plantilla no encontrada' }), true;
     send(res, 201, publicAgent(await saveAgent(tenantId, { ...structuredClone(tpl), id: await uniqueId(tenantId, tpl.id), source: 'template' })));
   } else if (req.method === 'POST' && path === '/v1/tts') {
+    if (!(await allow('agents.read'))) return true;
     const b = await readJson<{ text?: string; agent_id?: string }>(req);
     if (!b.text) return send(res, 400, { error: 'Falta "text"' }), true;
     const agent = b.agent_id ? await getAgent(tenantId, b.agent_id) : undefined;
@@ -187,16 +207,20 @@ export async function handlePublic(req: IncomingMessage, res: ServerResponse, pa
     void recordTts(tenantId, agent?.id, b.text.length, performance.now() - t0);
     send(res, 200, audio, 'audio/mpeg');
   } else if (req.method === 'POST' && (p = m(/^\/v1\/flows\/([^/]+)\/run$/))) {
+    if (!(await allow('flows.manage'))) return true;
     const { getFlow, runFlow } = await import('./flows.ts');
     const b = await readJson<{ payload?: unknown }>(req);
     send(res, 200, await runFlow(await getFlow(tenantId, decodeURIComponent(p[1])), b.payload ?? {}, 'api'));
   } else if (req.method === 'GET' && path === '/v1/metrics') {
+    if (!(await allow('metrics.read'))) return true;
     const q = new URL(req.url ?? '', 'http://x').searchParams.get('range');
     const { events, demo } = await readEvents(tenantId);
     send(res, 200, aggregate(events, await listAgents(tenantId), q === '24h' || q === '30d' ? q : '7d', demo));
   } else if (req.method === 'GET' && path === '/v1/models') {
+    if (!(await allow('agents.read'))) return true;
     send(res, 200, { object: 'list', data: (await listAgents(tenantId)).map((a) => ({ id: a.id, object: 'model', created: 0, owned_by: 'agent-studio' })) });
   } else if (req.method === 'POST' && path === '/v1/chat/completions') {
+    if (!(await allow('agents.read'))) return true;
     await chatCompletions(req, res, tenantId);
   } else {
     send(res, 404, { error: 'Ruta no encontrada. Ver /v1/openapi.json' });
