@@ -66,7 +66,18 @@ const CURRENCY = /^[A-Z]{3}$/;
 
 // Aplica un cambio parcial. Un secreto vacío no cambia el guardado; null lo borra.
 // Devuelve qué campos cambiaron (sin valores secretos) para la auditoría.
-export function updatePlatformSettings(patch: Partial<PlatformSettings>): { changed: string[] } {
+// En un cambio, null borra un secreto guardado
+export interface SettingsPatch {
+  llmKeys?: Record<string, string | null>;
+  llm?: PlatformSettings['llm'];
+  billing?: {
+    stripe?: { secretKey?: string | null; currency?: string };
+    mercadopago?: { accessToken?: string | null; currency?: string };
+    successUrl?: string;
+  };
+}
+
+export function updatePlatformSettings(patch: SettingsPatch): { changed: string[] } {
   const cur = structuredClone(getPlatformSettings());
   const changed: string[] = [];
   const setSecret = (path: string, current: string | undefined, next: unknown, apply: (v: string | undefined) => void) => {
