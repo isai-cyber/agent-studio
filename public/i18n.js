@@ -137,7 +137,7 @@ const EXACT = {
   'Pendiente de pago': 'Payment pending', 'Pagado': 'Paid', 'Anulado': 'Cancelled', 'Pendiente': 'Pending', 'Pagar ↗': 'Pay ↗', 'Cobros': 'Charges', 'No tienes cobros pendientes.': 'You have no pending charges.',
   'Conversaciones este mes': 'Conversations this month', 'Sin límite': 'No limit', 'permitidos': 'allowed',
   'Aún no perteneces a ninguna empresa': "You don't belong to any company yet",
-  'Pide a quien administra tu empresa en Agent Studio que te invite. Si ya tienes un enlace de invitación, ábrelo para unirte.': 'Ask whoever manages your company in Agent Studio to invite you. If you already have an invitation link, open it to join.',
+  'Pide a quien administra tu empresa en CrawStudio A.I que te invite. Si ya tienes un enlace de invitación, ábrelo para unirte.': 'Ask whoever manages your company in CrawStudio A.I to invite you. If you already have an invitation link, open it to join.',
 
   // ---------- módulos de negocio (registro) ----------
   'Mini CRM': 'Mini CRM', 'Bandeja compartida': 'Shared inbox', 'Inventario ligero': 'Light inventory', 'Pedidos y pagos': 'Orders and payments', 'Carritos abandonados y recordatorios': 'Abandoned carts and reminders',
@@ -185,7 +185,7 @@ const EXACT = {
   'Se crea un enlace de pago con la forma de cobro de la empresa (Stripe o Mercado Pago) y tus credenciales de Ajustes. El Propietario lo ve en Configuración → Facturación.': "A payment link is created with the company's billing method (Stripe or Mercado Pago) and your credentials from Settings. The Owner sees it in Settings → Billing.",
 
   // ---------- inicio de sesión ----------
-  'Bienvenido de nuevo': 'Welcome back', 'Inicia sesión para continuar en Agent Studio.': 'Log in to continue to Agent Studio.', 'Crea tu cuenta': 'Create your account',
+  'Bienvenido de nuevo': 'Welcome back', 'Inicia sesión para continuar en CrawStudio A.I.': 'Log in to continue to CrawStudio A.I.', 'Crea tu cuenta': 'Create your account',
   'Crea la cuenta de administrador': 'Create the administrator account', 'Empieza a crear agentes y automatizaciones.': 'Start creating agents and automations.', 'Iniciar sesión': 'Log in',
   'Crear cuenta': 'Create account', 'Entrar': 'Log in', 'Contraseña': 'Password', 'Repite la contraseña': 'Repeat the password', 'Mínimo 8 caracteres.': 'At least 8 characters.',
   'Las contraseñas no coinciden.': "The passwords don't match.", 'La invitación no existe o caducó. Pide una nueva.': "The invitation doesn't exist or has expired. Ask for a new one.",

@@ -82,9 +82,9 @@ export async function invite(tenantId: number, input: { email?: string; roleId?:
   const en = tenant?.language === 'en';
   const emailed = mailConfigured()
     ? await sendMail(email,
-      en ? `Invitation to ${tenant?.name ?? 'Agent Studio'}` : `Invitación a ${tenant?.name ?? 'Agent Studio'}`,
-      en ? `You were invited to join ${tenant?.name} on Agent Studio.\n\nAccept the invitation here (expires in ${INVITE_DAYS} days):\n${link}\n`
-        : `Te invitaron a unirte a ${tenant?.name} en Agent Studio con el rol ${role.name}.\n\nAcepta la invitación aquí (caduca en ${INVITE_DAYS} días):\n${link}\n`)
+      en ? `Invitation to ${tenant?.name ?? 'CrawStudio A.I'}` : `Invitación a ${tenant?.name ?? 'CrawStudio A.I'}`,
+      en ? `You were invited to join ${tenant?.name} on CrawStudio A.I.\n\nAccept the invitation here (expires in ${INVITE_DAYS} days):\n${link}\n`
+        : `Te invitaron a unirte a ${tenant?.name} en CrawStudio A.I con el rol ${role.name}.\n\nAcepta la invitación aquí (caduca en ${INVITE_DAYS} días):\n${link}\n`)
     : false;
   const invitation = (await listInvitations(tenantId)).find((i) => i.id === r.insertId)!;
   return { invitation, link, emailed };

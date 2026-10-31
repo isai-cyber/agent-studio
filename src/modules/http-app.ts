@@ -105,7 +105,7 @@ export function httpApp(app: HttpAppDef): ModuleDef {
     icon: app.icon,
     color: app.color,
     category: app.category,
-    author: 'Agent Studio',
+    author: 'CrawStudio A.I',
     version: '1.0.0',
     homepage: app.docs,
     auth: app.auth ? { fields: app.auth.fields, help: app.auth.help } : undefined,

@@ -5,8 +5,8 @@
 // - Cada agente tiene su espacio de trabajo por empresa:
 //     data/tenants/<empresa>/claude-code/<agente>/CLAUDE.md
 //   con las instrucciones, temas, conocimiento y acciones, generado a partir del
-//   YAML del agente (edítalo en Agent Studio: se regenera en cada turno si cambió).
-// - Cada conversación de Agent Studio continúa su sesión de Claude Code (resume).
+//   YAML del agente (edítalo en CrawStudio A.I: se regenera en cada turno si cambió).
+// - Cada conversación de CrawStudio A.I continúa su sesión de Claude Code (resume).
 // - Herramientas: las acciones HTTP del agente y las herramientas de los módulos
 //   de negocio activos van en un servidor MCP en proceso, con las mismas reglas
 //   que el backend directo (can(), auditoría). Las herramientas integradas de
@@ -117,7 +117,7 @@ async function knowledgeMarkdown(agent: AgentDef): Promise<string> {
 export async function buildClaudeMd(agent: AgentDef): Promise<string> {
   const language = agent.language ?? LANGUAGES[await tenantLanguage(agent.tenantId!)];
   const sections = [
-    `<!-- Generado por Agent Studio a partir de agents/${agent.tenantId}/${agent.id}/agent.yaml. Edítalo allí: se sobrescribe. -->`,
+    `<!-- Generado por CrawStudio A.I a partir de agents/${agent.tenantId}/${agent.id}/agent.yaml. Edítalo allí: se sobrescribe. -->`,
     `# ${agent.name}`,
     agent.description ? `> ${agent.description}` : '',
     `## Instrucciones\n\n${agent.instructions.trim()}`,
@@ -241,7 +241,7 @@ export async function send(agent: AgentDef, session: Session, text: string): Pro
     ...(resume ? { resume } : {}),
     model: agent.model?.startsWith('claude') ? agent.model : MODEL,
     ...(EFFORT ? { effort: EFFORT } : {}),
-    systemPrompt: `Eres un agente conversacional creado con Agent Studio que atiende a los usuarios de una empresa. Tu definición (instrucciones, temas, conocimiento y acciones) está en CLAUDE.md. Responde solo con el mensaje para el usuario.${names.includes('jev_decidir') ? ' Para clasificar, puntuar o comprobar condiciones usa la herramienta jev_decidir.' : ''}${names.includes('modelo_rapido') ? ' Para textos sencillos y repetitivos (resúmenes, traducciones, borradores) usa modelo_rapido.' : ''}`,
+    systemPrompt: `Eres un agente conversacional creado con CrawStudio A.I que atiende a los usuarios de una empresa. Tu definición (instrucciones, temas, conocimiento y acciones) está en CLAUDE.md. Responde solo con el mensaje para el usuario.${names.includes('jev_decidir') ? ' Para clasificar, puntuar o comprobar condiciones usa la herramienta jev_decidir.' : ''}${names.includes('modelo_rapido') ? ' Para textos sencillos y repetitivos (resúmenes, traducciones, borradores) usa modelo_rapido.' : ''}`,
     settingSources: ['project'], // carga el CLAUDE.md del espacio del agente
     tools: builtin, // [] = ninguna herramienta integrada (Bash, Read, Write…)
     allowedTools: [...builtin, ...names.map((n) => `mcp__${SERVER}__${n}`), ...Object.keys(external).map((n) => `mcp__${n}`)],

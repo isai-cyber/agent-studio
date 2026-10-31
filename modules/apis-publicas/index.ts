@@ -8,7 +8,7 @@ export default {
   icon: '🌦️',
   color: '#3fd6d0',
   category: 'Datos',
-  author: 'Agent Studio',
+  author: 'CrawStudio A.I',
   version: '1.0.0',
   homepage: 'https://github.com/public-apis/public-apis',
   actions: [

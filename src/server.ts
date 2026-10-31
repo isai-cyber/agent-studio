@@ -417,7 +417,7 @@ export async function startServer(port = PORT): Promise<Server> {
   const l = listModules();
   const n = (b: string) => l.filter((m) => m.badge === b).length;
   console.log(`Módulos: ${l.length} (${n('API')} APIs, ${n('MCP')} servidores MCP, ${l.length - n('API') - n('MCP')} nativos)${loadErrors.length ? ` · ${loadErrors.length} con errores` : ''}`);
-  console.log(`Agent Studio en http://localhost:${port}`);
+  console.log(`CrawStudio A.I en http://localhost:${port}`);
   console.log(`API REST: http://localhost:${port}/v1  ·  MCP: http://localhost:${port}/mcp  ·  claves de API en Configuración → Claves de API`);
   if (useOrchestrator()) console.log(`Backend: orquestado · Jev ${jevConfigured() ? 'decide' : 'sin clave (decide el orquestador)'} · orquestador ${llmStatus().default} · Claude Code ${claudeCodeStatus().model}`);
   if (useClaudeCode()) {

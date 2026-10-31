@@ -46,7 +46,7 @@ export default {
   icon: '🔌',
   color: '#111827',
   category: 'Conectores universales',
-  author: 'Agent Studio',
+  author: 'CrawStudio A.I',
   version: '1.0.0',
   homepage: 'https://modelcontextprotocol.io',
   actions: [

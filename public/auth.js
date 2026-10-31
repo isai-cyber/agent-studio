@@ -27,10 +27,10 @@ function render(info, mode) {
   // Quien llega con una invitación ve el registro en el idioma de esa empresa
   if (inv?.language) setLanguage(inv.language);
   el.innerHTML = `<div class="auth-card">
-    <img class="auth-logo" src="/brand-logo.png" alt="Agent Studio" />
+    <img class="auth-logo" src="/brand-logo.png" alt="CrawStudio A.I" />
     <h1>${signup ? (info.firstUser ? 'Crea la cuenta de administrador' : 'Crea tu cuenta') : 'Bienvenido de nuevo'}</h1>
     <p class="muted">${inv ? `Te invitaron a <b>${esc(inv.tenantName)}</b> con el rol <b>${esc(inv.roleName)}</b>. ${signup ? 'Crea tu cuenta para unirte.' : 'Si ya tienes cuenta, entra para unirte.'}`
-      : signup ? (info.firstUser ? 'Es la primera cuenta: será la propietaria de la empresa principal y administradora de la plataforma.' : 'Empieza a crear agentes y automatizaciones.') : 'Inicia sesión para continuar en Agent Studio.'}</p>
+      : signup ? (info.firstUser ? 'Es la primera cuenta: será la propietaria de la empresa principal y administradora de la plataforma.' : 'Empieza a crear agentes y automatizaciones.') : 'Inicia sesión para continuar en CrawStudio A.I.'}</p>
     ${info.signup && !info.firstUser ? `<div class="auth-tabs" role="tablist">
       <button type="button" class="${signup ? '' : 'active'}" data-mode="login" role="tab" aria-selected="${!signup}">Iniciar sesión</button>
       <button type="button" class="${signup ? 'active' : ''}" data-mode="signup" role="tab" aria-selected="${signup}">Crear cuenta</button></div>` : ''}

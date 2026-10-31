@@ -1,6 +1,6 @@
-<p align="center"><img src="public/brand-logo.png" alt="Agent Studio" width="140" /></p>
+<p align="center"><img src="public/brand-logo.png" alt="CrawStudio A.I" width="140" /></p>
 
-# Agent Studio
+# CrawStudio A.I
 
 Plataforma propia de agentes, alternativa a Copilot Studio: modelos de lenguaje de **varios proveedores** (DeepSeek, Qwen, OpenRouter, Groq, Ollama…; o Claude Code) y **ElevenLabs** para la voz. Incluye automatizaciones estilo Zapier con un marketplace de 565 apps (APIs REST y servidores MCP), un asistente que monta flujos hablando, métricas de tokens y coste, API REST y servidor MCP, y usuarios con MariaDB.
 
@@ -47,7 +47,7 @@ Lo que no se puede traducir automáticamente (flujos de Power Automate, SharePoi
 
 ## Varios proveedores de LLM (ahorro de tokens)
 
-Agent Studio habla con cualquier proveedor con API compatible con OpenAI. Vienen preparados **DeepSeek**, **Qwen** (Alibaba Cloud Model Studio, endpoint internacional), **OpenRouter**, **Groq** y **Ollama** (local); otros se añaden con `LLM_PROVIDERS`. Un modelo se escribe `proveedor:modelo` (`qwen:qwen-flash`, `deepseek:deepseek-v4-pro`).
+CrawStudio A.I habla con cualquier proveedor con API compatible con OpenAI. Vienen preparados **DeepSeek**, **Qwen** (Alibaba Cloud Model Studio, endpoint internacional), **OpenRouter**, **Groq** y **Ollama** (local); otros se añaden con `LLM_PROVIDERS`. Un modelo se escribe `proveedor:modelo` (`qwen:qwen-flash`, `deepseek:deepseek-v4-pro`).
 
 Para gastar menos:
 
@@ -113,11 +113,11 @@ Jev es opcional: sin su clave decide el propio orquestador. Si Claude Code falla
 
 ## Backend Claude Code
 
-Con `AGENT_BACKEND=claude-code` en `.env`, las respuestas libres de los agentes las da **Claude Code**, usado como librería con el [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) (`@anthropic-ai/claude-agent-sdk`). Agent Studio sigue siendo el editor y el chat de pruebas:
+Con `AGENT_BACKEND=claude-code` en `.env`, las respuestas libres de los agentes las da **Claude Code**, usado como librería con el [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) (`@anthropic-ai/claude-agent-sdk`). CrawStudio A.I sigue siendo el editor y el chat de pruebas:
 
-- Los **temas guiados** (preguntas, opciones, condiciones) se ejecutan en Agent Studio.
+- Los **temas guiados** (preguntas, opciones, condiciones) se ejecutan en CrawStudio A.I.
 - Las **respuestas libres** las genera Claude Code. Cada conversación continúa su propia sesión de Claude Code.
-- Cada agente tiene su espacio en `data/tenants/<empresa>/claude-code/<agente>/CLAUDE.md` (instrucciones, temas, conocimiento y acciones), generado a partir del YAML. Se regenera solo cuando cambias el agente (y entonces la conversación empieza de nuevo); edítalo en Agent Studio, no allí.
+- Cada agente tiene su espacio en `data/tenants/<empresa>/claude-code/<agente>/CLAUDE.md` (instrucciones, temas, conocimiento y acciones), generado a partir del YAML. Se regenera solo cuando cambias el agente (y entonces la conversación empieza de nuevo); edítalo en CrawStudio A.I, no allí.
 - Las **acciones HTTP** del agente y las herramientas de los **módulos de negocio activos** le llegan como un servidor MCP en proceso, con las mismas reglas de permisos y auditoría que el backend directo. Los servidores MCP del YAML (`mcpServers`) también se le pasan; los de stdio, solo en la empresa Default.
 - Las **herramientas integradas** de Claude Code (Bash, Read, Write, Edit…) están **desactivadas**: el agente atiende a usuarios, no trabaja en el servidor. Con `CLAUDE_CODE_TOOLS=WebSearch,WebFetch` puedes permitir algunas, solo para la empresa Default.
 - El coste y los tokens que informa Claude Code se apuntan en las **Métricas** de cada turno.
@@ -213,13 +213,13 @@ Lo decide una sola función, `can(ctx, { feature, permission })` (`src/authz/can
 - **OpenAPI**: el módulo «Cualquier API (OpenAPI)» llama a cualquier operación de una especificación OpenAPI/Swagger.
 - **Marketplace de 565 apps** (vista «Apps», inspirada en el marketplace de Dify; diseño propio, sin código de Dify): pestañas por tipo, categorías con contadores, búsqueda, tarjetas con el logo real de cada app y un panel con sus acciones, la conexión y «Usar en una automatización».
   - **469 APIs REST** generadas desde [APIs.guru](https://apis.guru) (CC0): hasta 15 operaciones por API con sus parámetros, la autenticación que declara la especificación y la acción «Llamar a cualquier endpoint». Solo se incluyen APIs cuyo servidor respondía al generar el catálogo. Ojo: muchas especificaciones son antiguas, así que algunas rutas pueden haber cambiado, y algunas APIs piden una clave que no declaran (para eso están los campos «Cabeceras extra» y «Parámetros extra» de la conexión). Los nombres de acciones y descripciones vienen en inglés, como en la especificación.
-  - **39 servidores MCP oficiales** (Notion, Linear, Atlassian, Asana, Stripe, PayPal, GitHub, Figma, Canva, Vercel, Supabase, HubSpot, Zapier…), con «Ver herramientas» y «Usar una herramienta». Solo se incluyen los que respondían al generar. Muchos usan OAuth en el navegador, que Agent Studio todavía no gestiona: si el servidor da un token personal, se pega en la conexión.
+  - **39 servidores MCP oficiales** (Notion, Linear, Atlassian, Asana, Stripe, PayPal, GitHub, Figma, Canva, Vercel, Supabase, HubSpot, Zapier…), con «Ver herramientas» y «Usar una herramienta». Solo se incluyen los que respondían al generar. Muchos usan OAuth en el navegador, que CrawStudio A.I todavía no gestiona: si el servidor da un token personal, se pega en la conexión.
   - **Logos**: [Simple Icons](https://simpleicons.org) (CC0) en el color de la marca; si la marca no está, el logo de la especificación o el favicon de su dominio, guardados en `public/logos/`. Las marcas pertenecen a sus dueños y solo identifican la app.
   - Se regenera con `npm run build:catalog` (descarga ~670 especificaciones; usa Simple Icons descomprimido en `/tmp/si/package` o en `SI_DIR`). Las apps hechas a mano en `modules/apps` tienen prioridad sobre las generadas.
 
 ## Asistente de automatización y onboarding
 
-En **Inicio**, escribe lo que quieres («Cuando llegue un pedido de Shopify avisa en Slack») y Agent Studio crea el flujo —y un agente si la petición lo describe— y te lleva al editor. El botón **✨ Asistente** abre un chat en cualquier pantalla para seguir ajustando hablando: «añade un correo», «quita el paso 3», «cámbialo a cada hora», «conecta https://…/mcp», «publícalo». Con algún proveedor de LLM configurado el plan lo hace el modelo con el catálogo de módulos; sin él se usan reglas propias. Rutas: `POST /api/assistant/plan` y `POST /api/assistant/chat`.
+En **Inicio**, escribe lo que quieres («Cuando llegue un pedido de Shopify avisa en Slack») y CrawStudio A.I crea el flujo —y un agente si la petición lo describe— y te lleva al editor. El botón **✨ Asistente** abre un chat en cualquier pantalla para seguir ajustando hablando: «añade un correo», «quita el paso 3», «cámbialo a cada hora», «conecta https://…/mcp», «publícalo». Con algún proveedor de LLM configurado el plan lo hace el modelo con el catálogo de módulos; sin él se usan reglas propias. Rutas: `POST /api/assistant/plan` y `POST /api/assistant/chat`.
 
 ## Créditos de datos
 

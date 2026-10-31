@@ -117,7 +117,7 @@ const ACTIONS: ActionRule[] = [
   { re: /linear/, app: 'linear', build: (c) => ({ module: 'linear', key: 'issue', name: 'Crear incidencia en Linear', args: { teamId: '', title: c.trig.text || c.trig.summary, description: msg(c) } }) },
   { re: /todoist|tarea/, app: 'todoist', build: (c) => ({ module: 'todoist', key: 'task', name: 'Crear tarea en Todoist', args: { content: c.trig.text || c.trig.summary, description: msg(c) } }) },
   { re: /calendar|calendario|evento|reunion/, app: 'google-calendar', build: (c) => ({ module: 'google-calendar', key: 'create-event', name: 'Crear evento en Google Calendar', args: { summary: c.trig.label, start: '', end: '', description: msg(c) } }) },
-  { re: /notificaci|push|ntfy|avisame al movil|al celular/, build: (c) => ({ module: 'ntfy', key: 'push', name: 'Notificación al móvil', args: { topic: `agent-studio-${randomUUID().slice(0, 8)}`, message: msg(c), title: 'Agent Studio' } }) },
+  { re: /notificaci|push|ntfy|avisame al movil|al celular/, build: (c) => ({ module: 'ntfy', key: 'push', name: 'Notificación al móvil', args: { topic: `agent-studio-${randomUUID().slice(0, 8)}`, message: msg(c), title: 'CrawStudio A.I' } }) },
   { re: /mercado ?pago|enlace de pago|link de pago/, app: 'mercadopago', build: () => ({ module: 'mercadopago', key: 'payment-link', name: 'Crear enlace de pago', args: { title: '', price: '', currency: 'MXN' } }) },
 ];
 

@@ -19,7 +19,7 @@ export default {
   icon: '💬',
   color: '#6fa8ff',
   category: 'Comunicación',
-  author: 'Agent Studio',
+  author: 'CrawStudio A.I',
   version: '1.0.0',
   actions: [
     {

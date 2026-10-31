@@ -18,7 +18,7 @@ export function openapi(serverUrl: string): object {
   return {
     openapi: '3.1.0',
     info: {
-      title: 'Agent Studio API',
+      title: 'CrawStudio A.I API',
       version: '0.1.0',
       description: 'Conecta tus agentes con otras apps. Autenticación: `Authorization: Bearer <clave>` o `X-Api-Key`. También hay un servidor MCP en `/mcp` y un endpoint compatible con OpenAI en `/v1/chat/completions`.',
     },

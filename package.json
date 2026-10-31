@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Plataforma propia de agentes (alternativa a Copilot Studio) con DeepSeek y ElevenLabs",
+  "description": "CrawStudio A.I: plataforma multi-empresa de agentes, automatizaciones y webs con tienda",
   "scripts": {
     "start": "node --env-file-if-exists=.env src/server.ts",
     "import": "node --env-file-if-exists=.env src/cli-import.ts",

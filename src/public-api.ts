@@ -1,4 +1,4 @@
-// API pública para conectar Agent Studio con otras apps:
+// API pública para conectar CrawStudio A.I con otras apps:
 //   /v1/...                 REST (documentada en /v1/openapi.json)
 //   /v1/chat/completions    compatible con OpenAI (model = id del agente)
 //   /mcp                    servidor MCP por HTTP (Streamable HTTP)

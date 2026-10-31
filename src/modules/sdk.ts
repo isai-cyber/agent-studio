@@ -1,4 +1,4 @@
-// SDK de módulos de Agent Studio.
+// SDK de módulos de CrawStudio A.I.
 //
 // Un módulo es un archivo (modules/<clave>/index.ts o .js) que exporta por defecto un
 // objeto con disparadores (triggers) y acciones (actions). La forma se inspira en las

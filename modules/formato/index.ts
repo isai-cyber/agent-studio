@@ -8,7 +8,7 @@ export default {
   icon: '🔧',
   color: '#93dfbc',
   category: 'Utilidades',
-  author: 'Agent Studio',
+  author: 'CrawStudio A.I',
   version: '1.0.0',
   actions: [
     {

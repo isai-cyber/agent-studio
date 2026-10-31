@@ -584,7 +584,7 @@ function mkCard(m) {
   const n = m.actions.length + m.triggers.length;
   return `<button class="mk-card" data-mk="${esc(m.key)}" data-kind="${kindOf(m)}" data-cat="${esc(m.category)}" data-search="${esc(`${m.name} ${m.description} ${m.category} ${m.key}`.toLowerCase())}">
     <div class="mk-card-top"><span class="mk-logo">${logo(m)}</span>
-      <div class="mk-card-titles"><b>${esc(m.name)}</b><small>${esc(m.author || 'Agent Studio')} · ${esc(KIND_LABEL[kindOf(m)])}</small></div>
+      <div class="mk-card-titles"><b>${esc(m.name)}</b><small>${esc(m.author || 'CrawStudio A.I')} · ${esc(KIND_LABEL[kindOf(m)])}</small></div>
       ${connections[m.key] ? '<span class="mk-conn" title="Conectado">✓</span>' : ''}</div>
     <p>${esc(m.description || 'Sin descripción.')}</p>
     <div class="mk-tags"><span>${esc(m.category)}</span><span>${n} ${n === 1 ? 'acción' : 'acciones'}</span>${m.triggers.length ? '<span>disparador</span>' : ''}</div>

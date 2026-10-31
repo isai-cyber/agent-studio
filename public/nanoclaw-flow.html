@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" />
 <style>
   :root {
-    /* Tema claro, a juego con Agent Studio (blanco + índigo) */
+    /* Tema claro, a juego con CrawStudio A.I (blanco + índigo) */
     --bg: #f6f7fb;
     --bg-2: #ffffff;
     --panel: rgba(255, 255, 255, 0.95);
@@ -1368,7 +1368,7 @@
   if (window.ResizeObserver) new ResizeObserver(() => { clearTimeout(resizeTimer); resizeTimer = setTimeout(layout, 60); }).observe($('stage'));
 
   // ================= datos en vivo (?feed=url) =================
-  // Dentro de Agent Studio la página recibe ?feed=/api/flow y usa los mensajes reales
+  // Dentro de CrawStudio A.I la página recibe ?feed=/api/flow y usa los mensajes reales
   const FEED = new URLSearchParams(location.search).get('feed');
   async function pullFeed(first) {
     try {

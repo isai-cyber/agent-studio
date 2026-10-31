@@ -46,7 +46,7 @@ export function createMcpServer(ctx: Ctx): McpServer {
   tool(
     'list_agents',
     'agents.read',
-    { title: 'Listar agentes', description: 'Lista los agentes disponibles en Agent Studio con su id, descripción y temas.', inputSchema: {} },
+    { title: 'Listar agentes', description: 'Lista los agentes disponibles en CrawStudio A.I con su id, descripción y temas.', inputSchema: {} },
     async () => text((await listAgents(tenantId)).map(summary)),
   );
 

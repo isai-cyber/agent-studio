@@ -52,7 +52,7 @@ export async function createCharge(tenantId: number, input: { amount?: number; c
   const s = getPlatformSettings().billing;
   const amount = Math.round(Number(input.amount) * 100) / 100;
   if (!(amount > 0) || amount > 1_000_000) throw fail(400, 'Escribe un importe mayor que 0.');
-  const description = String(input.description ?? '').trim().slice(0, 190) || `Servicio Agent Studio · ${tenant.name}`;
+  const description = String(input.description ?? '').trim().slice(0, 190) || `Servicio CrawStudio A.I · ${tenant.name}`;
   const t = tenantDb(tenantId);
   const returnUrl = s.successUrl || baseUrl;
   let currency: string, url: string, externalId: string;

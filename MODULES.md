@@ -1,6 +1,6 @@
-# Crear módulos para Agent Studio
+# Crear módulos para CrawStudio A.I
 
-Un **módulo** añade disparadores y acciones a las **Automatizaciones** (el editor de flujos de arrastrar y soltar). La forma de definirlos se inspira en las *apps* de [Automatisch](https://github.com/automatisch/automatisch) (`name`, `key`, `arguments`…), pero Agent Studio no incluye código de Automatisch: es una implementación propia, así que tu módulo no queda sujeto a la AGPL.
+Un **módulo** añade disparadores y acciones a las **Automatizaciones** (el editor de flujos de arrastrar y soltar). La forma de definirlos se inspira en las *apps* de [Automatisch](https://github.com/automatisch/automatisch) (`name`, `key`, `arguments`…), pero CrawStudio A.I no incluye código de Automatisch: es una implementación propia, así que tu módulo no queda sujeto a la AGPL.
 
 ## En 3 pasos
 
@@ -76,4 +76,4 @@ No escribas claves en el módulo. Pídelas como argumento con un valor por defec
 
 ## Seguridad
 
-Un módulo es código que se ejecuta en el servidor con los mismos permisos que Agent Studio. Instala solo módulos de fuentes en las que confíes y revisa el código antes.
+Un módulo es código que se ejecuta en el servidor con los mismos permisos que CrawStudio A.I. Instala solo módulos de fuentes en las que confíes y revisa el código antes.
