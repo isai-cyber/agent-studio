@@ -57,8 +57,6 @@ export interface AgentDef {
   source?: string; // p. ej. "copilot-studio-import" o "template"
   // Servidores MCP cuyas herramientas puede usar el agente al responder
   mcpServers?: { name: string; url?: string; transport?: 'http' | 'sse' | 'stdio'; headers?: Record<string, string>; command?: string; args?: string[] }[];
-  // Enlace con NanoClaw cuando AGENT_BACKEND=nanoclaw
-  nanoclaw?: { conversationId: string; folder: string; provider: string; model: string; syncedAt: string };
 }
 
 export interface ChatMessage {
@@ -82,4 +80,7 @@ export interface Session {
   variables: Record<string, unknown>;
   // Pila de ejecución del tema activo (para retomar tras una pregunta)
   pending?: { topic: string; stack: Step[][]; waitingFor?: { variable: string; options?: string[] } };
+  // Sesión de Claude Code que continúa esta conversación (AGENT_BACKEND=claude-code)
+  // y lo que llevaba gastado, para apuntar en las métricas solo lo de cada turno
+  claudeCode?: { sessionId?: string; costUsd: number; tokens: { input: number; cacheHit: number; output: number } };
 }

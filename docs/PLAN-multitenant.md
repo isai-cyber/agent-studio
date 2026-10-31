@@ -144,5 +144,5 @@ empresas, permisos y módulos usan MariaDB). Queda fuera de esta tarea o pendien
 - **Correo**: solo Resend; sin él, las invitaciones se comparten por enlace.
   Tampoco hay recuperación de contraseña.
 - **Eliminar empresa** es una baja lógica (no se purgan datos).
-- **NanoClaw**: los agentes ya enlazados conservan su carpeta antigua hasta que
-  se vuelven a sincronizar.
+- **NanoClaw** se sustituyó después por Claude Code (Claude Agent SDK): ver la
+  sección «Backend Claude Code» del README.

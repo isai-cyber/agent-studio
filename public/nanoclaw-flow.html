@@ -1404,7 +1404,7 @@
     if (!m || !m.kpis) return;
     const k = m.kpis;
     const step = Object.fromEntries((m.latency?.steps ?? []).map((s) => [s.step, s.avgMs]));
-    const g = (n) => step[n] ?? 0;
+    const g = (n) => (n === 'nanoclaw' ? (step.nanoclaw ?? 0) + (step['claude-code'] ?? 0) : step[n] ?? 0); // el antiguo NanoClaw y Claude Code ocupan las mismas nubes
     // Milisegundos atribuidos a cada nube (01–08)
     const msBy = [
       g('motor') * 0.5 + 5,

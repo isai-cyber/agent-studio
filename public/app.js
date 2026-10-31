@@ -112,14 +112,14 @@ $$('.tabs button').forEach(
 
 async function loadStatus() {
   status = await api('/api/status');
-  const nc = status.nanoclaw;
+  const cc = status.claudeCode;
   const brain =
-    status.backend === 'nanoclaw'
-      ? `Backend: NanoClaw ${nc?.reachable ? '✅' : '❌'}<br>Proveedor: ${esc(nc?.provider)} ${nc?.providerReady ? '✅' : '⚠️ no instalado'}<br>Modelo: ${esc(nc?.model)}`
+    status.backend === 'claude-code'
+      ? `Backend: Claude Code ${cc?.apiKey ? '✅' : '⚠️ sin credenciales detectadas'}<br>Modelo: ${esc(cc?.model)}`
       : `Backend: directo<br>LLM: ${status.llm ? '✅' : '❌'} ${esc(status.model)}`;
   $('#status').innerHTML = `${brain}<br>Voz ElevenLabs: ${status.voice ? '✅' : '❌'}`;
-  $('#sync-nanoclaw').hidden = status.backend !== 'nanoclaw';
-  const ok = status.backend === 'nanoclaw' ? nc?.reachable && nc?.providerReady : status.llm;
+  $('#sync-claude-code').hidden = status.backend !== 'claude-code';
+  const ok = status.backend === 'claude-code' ? cc?.apiKey : status.llm;
   $('.rail-status').classList.toggle('warn', !ok);
   $('#speak').disabled = !status.voice;
   $('#mic').disabled = !status.voice;
@@ -268,11 +268,11 @@ $('#save-yaml').onclick = async () => {
     $('#save-msg').textContent = `✖ ${e.message}`;
   }
 };
-$('#sync-nanoclaw').onclick = async () => {
-  $('#save-msg').textContent = 'Sincronizando con NanoClaw…';
+$('#sync-claude-code').onclick = async () => {
+  $('#save-msg').textContent = 'Regenerando CLAUDE.md…';
   try {
-    const link = await post(`/api/agents/${current.id}/nanoclaw/sync`);
-    $('#save-msg').textContent = `✔ Sincronizado: groups/${link.folder}/CLAUDE.md (${link.provider} · ${link.model})`;
+    const r = await post(`/api/agents/${current.id}/claude-code/sync`);
+    $('#save-msg').textContent = `✔ ${r.changed ? 'Actualizado' : 'Ya estaba al día'}: ${r.file}`;
   } catch (e) {
     $('#save-msg').textContent = `✖ ${e.message}`;
   }

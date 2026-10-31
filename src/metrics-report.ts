@@ -17,11 +17,12 @@ export const STEP_LABELS: Record<string, string> = {
   llm: 'Modelo (DeepSeek)',
   accion: 'Acciones / herramientas',
   mcp: 'Servidores MCP',
-  nanoclaw: 'Agente NanoClaw',
+  'claude-code': 'Claude Code',
+  nanoclaw: 'NanoClaw (antiguo)',
   voz: 'Voz (ElevenLabs)',
   motor: 'Motor y red',
 };
-const STEP_ORDER = ['clasificar', 'conocimiento', 'llm', 'accion', 'mcp', 'nanoclaw', 'motor', 'voz'];
+const STEP_ORDER = ['clasificar', 'conocimiento', 'llm', 'accion', 'mcp', 'modulo', 'claude-code', 'nanoclaw', 'motor', 'voz'];
 
 const SYSTEM_TOPICS = /^(saludo|greeting|goodbye|thank you|start over|reset conversation|end of conversation)$/i;
 const ESCALATION = /escal|humano|persona|human|agent/i;

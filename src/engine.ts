@@ -7,9 +7,8 @@ import type { AgentDef, ChatMessage, Session, Step, Topic } from './types.ts';
 import { chat, llmConfigured } from './llm.ts';
 import { search } from './knowledge.ts';
 import { actionTools, runAction, toolName } from './actions.ts';
-import { agentDir, saveAgent } from './store.ts';
-import { useNanoclaw, syncAgent, send as nanoclawSend } from './nanoclaw.ts';
-import { tenantSlug } from './tenancy/tenants.ts';
+import { agentDir } from './store.ts';
+import { useClaudeCode, send as claudeCodeSend } from './claude-code.ts';
 import { runTurn, timed, setRoute, type Channel } from './metrics.ts';
 import { bus } from './flows.ts';
 import { listTools as mcpListTools, callTool as mcpCallTool } from './mcp-client.ts';
@@ -113,7 +112,7 @@ function matchByTrigger(topics: Topic[], text: string): Topic | undefined {
 }
 
 async function matchByLlm(agent: AgentDef, topics: Topic[], text: string, history: ChatMessage[]): Promise<Topic | undefined> {
-  // Sin clave directa de DeepSeek (p. ej. todo pasa por NanoClaw) solo se usan las frases disparadoras
+  // Sin clave directa de DeepSeek (p. ej. todo pasa por Claude Code) solo se usan las frases disparadoras
   if (!topics.length || !llmConfigured()) return undefined;
   const list = topics
     .map((t, i) => `${i + 1}. ${t.name}: ${t.description ?? ''} Ejemplos: ${(t.triggers ?? []).slice(0, 6).join(' | ')}`)
@@ -147,22 +146,14 @@ function matchOption(options: string[], answer: string): string | undefined {
 
 // ---------- respuesta generativa ----------
 
-// Con AGENT_BACKEND=nanoclaw la respuesta la genera el agente en NanoClaw
-// (opencode → DeepSeek), que guarda su propio historial y conocimiento (CLAUDE.md).
-export async function ensureNanoclaw(agent: AgentDef): Promise<NonNullable<AgentDef['nanoclaw']>> {
-  if (agent.nanoclaw?.conversationId) return agent.nanoclaw;
-  agent.nanoclaw = await syncAgent(agent, await tenantSlug(tenantOf(agent)));
-  await saveAgent(tenantOf(agent), agent);
-  return agent.nanoclaw;
-}
-
 async function generate(agent: AgentDef, session: Session, userText: string, extraPrompt?: string, useKnowledge = true): Promise<{ text: string; sources: string[]; options?: string[] }> {
-  if (useNanoclaw()) {
-    const link = await ensureNanoclaw(agent);
+  // Con AGENT_BACKEND=claude-code la respuesta la da Claude Code (Claude Agent SDK),
+  // que guarda su propio historial por conversación y lee el agente de su CLAUDE.md
+  if (useClaudeCode()) {
     const prompt = extraPrompt ? `${userText}\n\n[Contexto del flujo: ${render(extraPrompt, session.variables)}]` : userText;
-    setRoute('nanoclaw');
-    const reply = await timed('nanoclaw', () => nanoclawSend(link.conversationId, prompt));
-    return { text: reply.text, sources: ['NanoClaw'], options: reply.options };
+    setRoute('claude-code');
+    const reply = await timed('claude-code', () => claudeCodeSend(agent, session, prompt));
+    return { text: reply.text, sources: ['Claude Code'] };
   }
   const dir = agentDir(tenantOf(agent), agent.id);
   setRoute('generativa');

@@ -382,7 +382,7 @@ function chartOutcome(card) {
 function kpis() {
   const k = data.kpis;
   const tiles = [
-    ['Tokens', fmtCompact.format(k.tokens), k.unknownTokenTurns ? `${fmtInt.format(k.unknownTokenTurns)} mensajes vía NanoClaw sin cifra de tokens` : `${fmtInt.format(k.turns)} mensajes`],
+    ['Tokens', fmtCompact.format(k.tokens), k.unknownTokenTurns ? `${fmtInt.format(k.unknownTokenTurns)} mensajes sin cifra de tokens (NanoClaw, antiguo)` : `${fmtInt.format(k.turns)} mensajes`],
     ['Coste', usd(k.costUsd), `Precios: $${data.prices.input}/M entrada · $${data.prices.output}/M salida`],
     ['Conversaciones', fmtInt.format(k.conversations), k.conversations ? `${(k.turns / k.conversations).toFixed(1)} mensajes de media` : '—'],
     ['Latencia', ms(k.p50LatencyMs), `p95 ${ms(k.p95LatencyMs)}${k.errors ? ` · ${k.errors} errores` : ''}`],

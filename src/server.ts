@@ -12,7 +12,7 @@ import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { ROOT, listAgents, getAgent, saveAgent, saveAgentYaml, deleteAgent, uniqueId, countAgents } from './store.ts';
 import { handleTurn, resetSession } from './engine.ts';
-import { useNanoclaw, BACKEND, status as nanoclawStatus, syncAgent } from './nanoclaw.ts';
+import { useClaudeCode, BACKEND, status as claudeCodeStatus, syncAgent } from './claude-code.ts';
 import { textToSpeech, speechToText, listVoices, voiceConfigured } from './voice.ts';
 import { llmConfigured, DEFAULT_MODEL } from './llm.ts';
 import { importPath, importTopicYaml } from './importer.ts';
@@ -26,7 +26,7 @@ import { planFromText, assistantTurn } from './assistant.ts';
 import { recordTts, clearDemo, writeDemo, readEvents } from './metrics.ts';
 import { aggregate, makeDemo } from './metrics-report.ts';
 import { DEFAULT_TENANT_ID, DEFAULT_TENANT_SLUG, tenantDataPath } from './tenancy/paths.ts';
-import { getTenantBySlug, tenantSlug, isTenantActive } from './tenancy/tenants.ts';
+import { getTenantBySlug, isTenantActive } from './tenancy/tenants.ts';
 import { needsTenancyMigration } from './tenancy/migrate.ts';
 import { contextForUser, localContext, systemContext, type Ctx } from './authz/context.ts';
 import { can, assertCan } from './authz/can.ts';
@@ -70,7 +70,7 @@ route('GET', '/api/status', { noTenant: true }, async (_req, res) => {
     llm: llmConfigured(),
     model: DEFAULT_MODEL,
     voice: voiceConfigured(),
-    ...(useNanoclaw() ? { nanoclaw: await nanoclawStatus() } : {}),
+    ...(useClaudeCode() ? { claudeCode: claudeCodeStatus() } : {}),
   });
 });
 
@@ -108,19 +108,15 @@ route('GET', '/api/agents/:id/yaml', { perm: 'agents.read' }, async (_req, res, 
 
 route('PUT', '/api/agents/:id/yaml', { perm: 'agents.manage' }, async (req, res, [id], ctx) => {
   const agent = await saveAgentYaml(ctx.tenantId, id, (await readBody(req)).toString('utf8'));
-  // Mantener CLAUDE.md de NanoClaw al día si el agente ya está enlazado
-  if (useNanoclaw() && agent.nanoclaw) {
-    agent.nanoclaw = await syncAgent(agent, await tenantSlug(ctx.tenantId));
-    await saveAgent(ctx.tenantId, agent);
-  }
+  // Mantener al día el CLAUDE.md de Claude Code
+  if (useClaudeCode()) await syncAgent(agent);
   send(res, 200, agent);
 });
 
-route('POST', '/api/agents/:id/nanoclaw/sync', { perm: 'agents.manage' }, async (_req, res, [id], ctx) => {
-  const agent = await getAgent(ctx.tenantId, id);
-  agent.nanoclaw = await syncAgent(agent, await tenantSlug(ctx.tenantId));
-  await saveAgent(ctx.tenantId, agent);
-  send(res, 200, agent.nanoclaw);
+route('POST', '/api/agents/:id/claude-code/sync', { perm: 'agents.manage' }, async (_req, res, [id], ctx) => {
+  const r = await syncAgent(await getAgent(ctx.tenantId, id));
+  // La ruta en disco no sale de la empresa: solo el nombre del archivo
+  send(res, 200, { file: `claude-code/${id}/CLAUDE.md`, syncedAt: r.syncedAt, changed: r.changed });
 });
 
 route('DELETE', '/api/agents/:id', { perm: 'agents.manage' }, async (_req, res, [id], ctx) => {
@@ -415,8 +411,11 @@ export async function startServer(port = PORT): Promise<Server> {
   console.log(`Módulos: ${l.length} (${n('API')} APIs, ${n('MCP')} servidores MCP, ${l.length - n('API') - n('MCP')} nativos)${loadErrors.length ? ` · ${loadErrors.length} con errores` : ''}`);
   console.log(`Agent Studio en http://localhost:${port}`);
   console.log(`API REST: http://localhost:${port}/v1  ·  MCP: http://localhost:${port}/mcp  ·  claves de API en Configuración → Claves de API`);
-  if (useNanoclaw()) console.log(`Backend: NanoClaw (${process.env.NANOCLAW_PROVIDER ?? 'opencode'} · ${process.env.NANOCLAW_MODEL ?? 'deepseek/deepseek-chat'})`);
-  else if (!llmConfigured()) console.log('⚠ Falta DEEPSEEK_API_KEY (copia .env.example a .env)');
+  if (useClaudeCode()) {
+    const st = claudeCodeStatus();
+    console.log(`Backend: Claude Code (${st.model}${st.builtinTools.length ? ` · herramientas: ${st.builtinTools.join(', ')}` : ''})`);
+    if (!st.apiKey) console.log('⚠ No se detectan credenciales para Claude Code: define ANTHROPIC_API_KEY (o inicia sesión con claude)');
+  } else if (!llmConfigured()) console.log('⚠ Falta DEEPSEEK_API_KEY (copia .env.example a .env)');
   if (!voiceConfigured()) console.log('⚠ Falta ELEVENLABS_API_KEY: la voz estará desactivada');
   return server;
 }

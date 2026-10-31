@@ -45,21 +45,20 @@ npm test               # pruebas (las de permisos y empresas usan MariaDB: ver t
 
 Lo que no se puede traducir automáticamente (flujos de Power Automate, SharePoint, tarjetas adaptativas) sale en el informe como "Revisar" y se marca en el agente con `[IMPORT]`. El YAML original de cada componente se guarda en `agents/<empresa>/<id>/import/`. Por línea de comandos: `npm run import -- solucion.zip --tenant <id>` (sin `--tenant`, en la empresa Default).
 
-## Backend NanoClaw + opencode
+## Backend Claude Code
 
-Con `AGENT_BACKEND=nanoclaw` en `.env`, cada agente se ejecuta como un agente de **NanoClaw** (en su propio contenedor Docker) con el proveedor **opencode → DeepSeek**. Agent Studio sigue siendo el editor y el chat de pruebas:
+Con `AGENT_BACKEND=claude-code` en `.env`, las respuestas libres de los agentes las da **Claude Code**, usado como librería con el [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) (`@anthropic-ai/claude-agent-sdk`). Agent Studio sigue siendo el editor y el chat de pruebas:
 
 - Los **temas guiados** (preguntas, opciones, condiciones) se ejecutan en Agent Studio.
-- Las **respuestas libres** las genera el agente en NanoClaw, que guarda su propio historial.
-- Al sincronizar, el agente se escribe en `~/nanoclaw/groups/web-<nombre>/CLAUDE.md` (instrucciones, temas, conocimiento y acciones). Ese archivo se regenera: edita el agente aquí, no allí.
-- Desde NanoClaw puedes conectar el mismo agente a WhatsApp, Telegram, Slack… (`/add-whatsapp`, `/manage-channels`).
+- Las **respuestas libres** las genera Claude Code. Cada conversación continúa su propia sesión de Claude Code.
+- Cada agente tiene su espacio en `data/tenants/<empresa>/claude-code/<agente>/CLAUDE.md` (instrucciones, temas, conocimiento y acciones), generado a partir del YAML. Se regenera solo cuando cambias el agente (y entonces la conversación empieza de nuevo); edítalo en Agent Studio, no allí.
+- Las **acciones HTTP** del agente y las herramientas de los **módulos de negocio activos** le llegan como un servidor MCP en proceso, con las mismas reglas de permisos y auditoría que el backend directo. Los servidores MCP del YAML (`mcpServers`) también se le pasan; los de stdio, solo en la empresa Default.
+- Las **herramientas integradas** de Claude Code (Bash, Read, Write, Edit…) están **desactivadas**: el agente atiende a usuarios, no trabaja en el servidor. Con `CLAUDE_CODE_TOOLS=WebSearch,WebFetch` puedes permitir algunas, solo para la empresa Default.
+- El coste y los tokens que informa Claude Code se apuntan en las **Métricas** de cada turno.
 
-Requisitos: Docker arrancado, NanoClaw con el canal `local-web` y el proveedor opencode instalado (`/add-opencode`), y la clave de DeepSeek registrada en OneCLI:
+Requisitos: `ANTHROPIC_API_KEY` en `.env` (o un login de `claude`). Modelo: `CLAUDE_CODE_MODEL` (por defecto `claude-opus-5-5`); un agente con `model: claude-…` en su YAML usa ese. Ajustes opcionales: `CLAUDE_CODE_EFFORT`, `CLAUDE_CODE_MAX_TURNS` y `CLAUDE_CODE_TIMEOUT_MS`.
 
-```bash
-onecli secrets create --name "DeepSeek" --type generic --value TU_CLAVE \
-  --host-pattern "api.deepseek.com" --header-name "Authorization" --value-format "Bearer {value}"
-```
+Sustituye al antiguo backend NanoClaw: `AGENT_BACKEND=nanoclaw` se trata como `claude-code` (con un aviso) y las variables `NANOCLAW_*` ya no se usan.
 
 ## Conectar con otras apps (API REST y MCP)
 
@@ -78,15 +77,15 @@ La API interna `/api/*` es solo para la interfaz local y no lleva autenticación
 
 ## Métricas
 
-Cada mensaje se registra en `data/tenants/<empresa>/metrics/events.jsonl`: tokens (entrada, caché, salida), coste estimado, latencia de cada paso (clasificar, conocimiento, modelo, acciones, NanoClaw, voz) y ruta (saludo, tema, respuesta libre, NanoClaw), además del canal (interfaz, API, OpenAI, MCP).
+Cada mensaje se registra en `data/tenants/<empresa>/metrics/events.jsonl`: tokens (entrada, caché, salida), coste estimado, latencia de cada paso (clasificar, conocimiento, modelo, acciones, Claude Code, voz) y ruta (saludo, tema, respuesta libre, Claude Code), además del canal (interfaz, API, OpenAI, MCP).
 
 La pantalla **Métricas** muestra: tokens en el tiempo por agente, coste acumulado del mes frente al presupuesto, coste por agente, latencia por paso y coste por resultado de cada conversación. Cada gráfica tiene vista de tabla. Los mismos datos están en `GET /v1/metrics?range=24h|7d|30d`.
 
-Los precios y el presupuesto se configuran en `.env` (`PRICE_INPUT_PER_M`, `PRICE_OUTPUT_PER_M`, `MONTHLY_BUDGET_USD`…). Por NanoClaw no llegan cifras de tokens: esos mensajes cuentan latencia y ruta, y se indican aparte.
+Los precios y el presupuesto se configuran en `.env` (`PRICE_INPUT_PER_M`, `PRICE_OUTPUT_PER_M`, `MONTHLY_BUDGET_USD`…). Con Claude Code se usan el coste y los tokens que informa el propio SDK.
 
 ## Agente en vivo (visualización)
 
-El flujo de NanoClaw (canal → router → inbound.db → contenedor → memoria → skills/MCP → outbound.db → entrega) se dibuja en 3D en `public/nanoclaw-flow.html` (canvas 2D con proyección en perspectiva propia, sin librerías): suelo holográfico, nubes como volúmenes flotantes, la caja del contenedor en alambre y una araña cuyas patas se resuelven con FABRIK en 3D. Arrastra para girar la cámara; haz clic en el suelo para mover a la araña.
+El recorrido de un mensaje, dibujado con la arquitectura de NanoClaw (canal → router → inbound.db → contenedor → memoria → skills/MCP → outbound.db → entrega) se dibuja en 3D en `public/nanoclaw-flow.html` (canvas 2D con proyección en perspectiva propia, sin librerías): suelo holográfico, nubes como volúmenes flotantes, la caja del contenedor en alambre y una araña cuyas patas se resuelven con FABRIK en 3D. Arrastra para girar la cámara; haz clic en el suelo para mover a la araña.
 
 En **Métricas** está la tarjeta **Agente en vivo**: la misma araña, pero guiada por las métricas del periodo elegido. El tiempo que pasa en cada nube es proporcional a la latencia de esa fase; su velocidad, a la latencia p50; sus patas, a los agentes activos y las conversaciones; su latido, a los mensajes por hora; y el núcleo se pone rojo si se rompe el SLA (proyección por encima del presupuesto, p95 > 8 s o errores). Cada nube muestra su métrica (conversaciones, % resuelto por temas, tokens, coste…).
 
@@ -136,7 +135,7 @@ Lo decide una sola función, `can(ctx, { feature, permission })` (`src/authz/can
 
 **Auditoría** (Configuración → Auditoría): cambios de módulos, roles, usuarios, conexiones y claves, inicios de sesión, modo soporte, herramientas y webhooks bloqueados. Es de solo lectura incluso para el Propietario (la base lo impide con triggers si el usuario de MariaDB tiene permiso `TRIGGER`). Se filtra por actor, acción y fecha y se exporta a CSV.
 
-**Migrar una instalación existente**: `npm run migrate:tenancy`. Es repetible y respalda antes de mover (`data/backups/tenancy-<fecha>/`): crea la empresa Default (id 1), hace Propietario y superadmin al administrador actual (el resto de cuentas pasan a Admin de Default), mueve `data/` y `agents/` a sus carpetas por empresa, cifra `connections.json` y convierte `data/api-key` en una clave de API de Default. Si NanoClaw ya tenía agentes enlazados, siguen funcionando; al volver a sincronizar se crean con el nombre nuevo `web-<empresa>-<agente>`.
+**Migrar una instalación existente**: `npm run migrate:tenancy`. Es repetible y respalda antes de mover (`data/backups/tenancy-<fecha>/`): crea la empresa Default (id 1), hace Propietario y superadmin al administrador actual (el resto de cuentas pasan a Admin de Default), mueve `data/` y `agents/` a sus carpetas por empresa, cifra `connections.json` y convierte `data/api-key` en una clave de API de Default.
 
 **Seguridad entre empresas**: además del aislamiento de datos, un agente o flujo solo ve las variables `FLOW_*` del `.env` si es de la empresa Default, los servidores MCP por stdio (que ejecutan programas en el servidor) solo se permiten en Default (`MCP_STDIO_ALL_TENANTS=true` para cambiarlo) e instalar módulos de la comunidad es cosa del superadmin.
 

@@ -1,5 +1,5 @@
 // Métricas por mensaje: tokens, coste, latencia por paso y ruta (tema, respuesta
-// libre, NanoClaw...). Cada turno se guarda como una línea JSON en
+// libre, Claude Code...). Cada turno se guarda como una línea JSON en
 // data/tenants/<id>/metrics/events.jsonl. Los datos de ejemplo van aparte, en demo.jsonl.
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
@@ -20,7 +20,8 @@ export const PRICES = {
   monthlyBudget: Number(process.env.MONTHLY_BUDGET_USD ?? 20),
 };
 
-export type Route = 'saludo' | 'tema' | 'generativa' | 'nanoclaw';
+// 'nanoclaw' solo aparece en métricas antiguas (backend retirado)
+export type Route = 'saludo' | 'tema' | 'generativa' | 'claude-code' | 'nanoclaw';
 export type Channel = 'ui' | 'api' | 'openai' | 'mcp';
 
 export interface TurnEvent {
@@ -55,6 +56,10 @@ interface TurnCtx {
   cacheHit: number;
   output: number;
   llmCalls: number;
+  // Coste que informa Claude Code (ya calculado con sus precios) y sus tokens,
+  // que no se vuelven a cobrar con los precios de DeepSeek
+  reportedCostUsd: number;
+  reported: { input: number; cacheHit: number; output: number };
   steps: Record<string, number>;
   route?: Route;
 }
@@ -85,9 +90,19 @@ export function addUsage(u: { prompt_tokens?: number; completion_tokens?: number
   ctx.llmCalls++;
 }
 
+export function addClaudeUsage(u: { input: number; cacheHit: number; output: number; costUsd: number }): void {
+  const ctx = als.getStore();
+  if (!ctx) return;
+  ctx.reported.input += u.input;
+  ctx.reported.cacheHit += u.cacheHit;
+  ctx.reported.output += u.output;
+  ctx.reportedCostUsd += u.costUsd;
+  ctx.llmCalls++;
+}
+
 export function setRoute(route: Route): void {
   const ctx = als.getStore();
-  if (ctx && (!ctx.route || route === 'nanoclaw' || (route === 'generativa' && ctx.route === 'saludo'))) ctx.route = route;
+  if (ctx && (!ctx.route || route === 'claude-code' || (route === 'generativa' && ctx.route === 'saludo'))) ctx.route = route;
 }
 
 async function append(tenantId: number, event: MetricEvent): Promise<void> {
@@ -100,7 +115,7 @@ export async function runTurn<T extends { sessionId: string; topic?: string }>(
   meta: { tenantId: number; agentId: string; channel: Channel },
   fn: () => Promise<T>,
 ): Promise<T> {
-  const ctx: TurnCtx = { input: 0, cacheHit: 0, output: 0, llmCalls: 0, steps: {} };
+  const ctx: TurnCtx = { input: 0, cacheHit: 0, output: 0, llmCalls: 0, reportedCostUsd: 0, reported: { input: 0, cacheHit: 0, output: 0 }, steps: {} };
   const start = performance.now();
   let result: T | undefined;
   let error: string | undefined;
@@ -120,9 +135,8 @@ export async function runTurn<T extends { sessionId: string; topic?: string }>(
       channel: meta.channel,
       route: ctx.route ?? 'tema',
       ...(result?.topic ? { topic: result.topic } : {}),
-      // Por NanoClaw no llegan cifras de tokens: se marcan como desconocidas
-      tokens: { input: ctx.input, cacheHit: ctx.cacheHit, output: ctx.output, known: ctx.route !== 'nanoclaw' },
-      costUsd: costOf(ctx.input, ctx.cacheHit, ctx.output),
+      tokens: { input: ctx.input + ctx.reported.input, cacheHit: ctx.cacheHit + ctx.reported.cacheHit, output: ctx.output + ctx.reported.output, known: true },
+      costUsd: costOf(ctx.input, ctx.cacheHit, ctx.output) + ctx.reportedCostUsd,
       latencyMs: { total: Math.round(performance.now() - start), steps },
       ...(error ? { error } : {}),
     };

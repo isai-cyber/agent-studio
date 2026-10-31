@@ -179,7 +179,7 @@
       <div id="m-kpis" class="kpis"></div>
       <div class="m-grid">
         <article class="card chart-card m-wide live-card">
-          <div class="chart-head"><div><h3>Agente en vivo</h3><p class="muted">La araña recorre el flujo de NanoClaw según estas métricas: tarda más donde hay más latencia, se mueve según la p50, sus patas son agentes y conversaciones, y su núcleo se pone rojo si se rompe el SLA.</p></div></div>
+          <div class="chart-head"><div><h3>Agente en vivo</h3><p class="muted">La araña recorre el flujo de un mensaje según estas métricas: tarda más donde hay más latencia, se mueve según la p50, sus patas son agentes y conversaciones, y su núcleo se pone rojo si se rompe el SLA.</p></div></div>
           <iframe id="live-frame" title="Agente en vivo según las métricas" src="/nanoclaw-flow.html?embed=1"></iframe>
         </article>
         <article class="card chart-card m-wide" data-chart="tokens">
@@ -321,7 +321,7 @@
         <textarea id="yaml" rows="30" spellcheck="false"></textarea>
         <div class="row">
           <button id="save-yaml" class="primary">Guardar</button>
-          <button id="sync-nanoclaw" class="ghost" hidden>Sincronizar con NanoClaw</button>
+          <button id="sync-claude-code" class="ghost" hidden>Regenerar CLAUDE.md (Claude Code)</button>
           <button id="load-voices" class="ghost">Ver voces de ElevenLabs</button>
           <span id="save-msg" class="muted"></span>
         </div>
