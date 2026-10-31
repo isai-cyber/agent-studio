@@ -2,9 +2,10 @@ import { initMetrics, load as loadMetrics } from './metrics.js';
 import { initFlows, loadFlowsView, loadModulesView, openFlowById, openAppDetail, setTenantSlug } from './flows.js';
 import { initAssistant } from './assistant.js';
 import { ensureAuth, sessionExpired } from './auth.js';
-import { ctx, loadContext, can, isPlatformAdmin } from './context.js';
+import { ctx, loadContext, can, canAny, featureOn, isPlatformAdmin } from './context.js';
 import { initSettings, loadSettingsView } from './settings.js';
 import { initPlatform, loadPlatformView } from './admin.js';
+import { initSites, loadSitesView, retryStripeOnboarding } from './sites.js';
 import { setLanguage, initialLanguage } from './i18n.js';
 
 setLanguage(initialLanguage());
@@ -43,6 +44,7 @@ function show(view, sub) {
   if (view === 'modules') loadModulesView();
   if (view === 'settings') loadSettingsView(sub);
   if (view === 'platform') loadPlatformView(sub);
+  if (view === 'web') loadSitesView(sub);
 }
 
 // ---------- empresa activa, menú según permisos y módulos ----------
@@ -56,6 +58,7 @@ const NAV_PERMS = {
   modules: () => can('flows.read'),
   metrics: () => can('metrics.read'),
   connect: () => can('agents.read'),
+  web: () => !ctx?.local && featureOn('web_store') && canAny('web_store.site.read', 'web_store.products.read', 'web_store.orders.read', 'web_store.payments.manage'),
   settings: () => Boolean(ctx?.tenant),
   platform: () => isPlatformAdmin() && !ctx?.local,
 };
@@ -475,6 +478,7 @@ initMetrics(api);
 initFlows(api, post);
 initSettings(api, post, refreshContext, show);
 initPlatform(api, post, () => location.reload());
+initSites(api);
 // El asistente toma el control de la caja de Inicio: escribir → onboarding → editor del flujo
 initAssistant(post, show);
 // Primero la sesión (usuarios en MariaDB); luego se carga la app
@@ -482,6 +486,14 @@ ensureAuth(async () => {
   try { await refreshContext(); } catch (e) { console.warn('contexto:', e.message); }
   loadStatus();
   if (ctx && !ctx.tenant) return show('notenant');
+  // Vuelta del alta de cobros (Stripe / Mercado Pago): abrir Mi web → Cobros
+  const back = new URLSearchParams(location.search);
+  if (back.get('web')) {
+    history.replaceState(null, '', '/');
+    show('web', back.get('web'));
+    if (back.get('stripe') === 'reintentar') retryStripeOnboarding();
+    return;
+  }
   if (can('agents.read')) loadHome();
   else $('#recent-list').innerHTML = '';
 });

@@ -19,14 +19,17 @@ export interface PlatformSettings {
   llmKeys: Record<string, string>; // proveedor → API key (incluye "typesafe" para Jev)
   llm: { model?: string; classify?: string; flows?: string; fallbacks?: string[] };
   billing: {
-    stripe?: { secretKey?: string; currency?: string };
+    stripe?: { secretKey?: string; currency?: string; webhookSecret?: string };
     mercadopago?: { accessToken?: string; currency?: string };
     successUrl?: string; // a dónde vuelve el cliente tras pagar
+    // Marketplace de las webs de tus clientes: el dinero de cada venta va a la cuenta
+    // de tu cliente y tú te quedas esta comisión
+    marketplace?: { feePercent?: number; mpClientId?: string; mpClientSecret?: string };
   };
 }
 
 // Campos secretos: van cifrados y enmascarados
-const SECRET = (path: string) => path.startsWith('llmKeys.') || path === 'billing.stripe.secretKey' || path === 'billing.mercadopago.accessToken';
+const SECRET = (path: string) => path.startsWith('llmKeys.') || ['billing.stripe.secretKey', 'billing.stripe.webhookSecret', 'billing.mercadopago.accessToken', 'billing.marketplace.mpClientSecret'].includes(path);
 
 const file = () => join(DATA_DIR, 'platform', 'settings.json');
 const empty = (): PlatformSettings => ({ llmKeys: {}, llm: {}, billing: {} });
@@ -75,9 +78,10 @@ export interface SettingsPatch {
   llmKeys?: Record<string, string | null>;
   llm?: PlatformSettings['llm'];
   billing?: {
-    stripe?: { secretKey?: string | null; currency?: string };
+    stripe?: { secretKey?: string | null; currency?: string; webhookSecret?: string | null };
     mercadopago?: { accessToken?: string | null; currency?: string };
     successUrl?: string;
+    marketplace?: { feePercent?: number | string; mpClientId?: string; mpClientSecret?: string | null };
   };
 }
 
@@ -127,6 +131,24 @@ export function updatePlatformSettings(patch: SettingsPatch): { changed: string[
         if (!CURRENCY.test(c)) throw fail('La moneda debe ser un código de 3 letras (USD, MXN…)');
         if (curP.currency !== c) { curP.currency = c; changed.push(`billing.${p}.currency`); }
       }
+    }
+    if (b.stripe?.webhookSecret !== undefined) {
+      const curS = (cur.billing.stripe ??= {});
+      setSecret('billing.stripe.webhookSecret', curS.webhookSecret, b.stripe.webhookSecret, (v) => { curS.webhookSecret = v; });
+    }
+    if (b.marketplace) {
+      const m = (cur.billing.marketplace ??= {});
+      if (b.marketplace.feePercent !== undefined && b.marketplace.feePercent !== '') {
+        const fee = Number(b.marketplace.feePercent);
+        if (!(fee >= 0 && fee <= 50)) throw fail('La comisión debe estar entre 0 y 50 %');
+        if (m.feePercent !== fee) { m.feePercent = fee; changed.push('billing.marketplace.feePercent'); }
+      }
+      if (b.marketplace.mpClientId !== undefined) {
+        const id = String(b.marketplace.mpClientId).trim();
+        if (id && !/^\d{4,30}$/.test(id)) throw fail('El Client ID de Mercado Pago es un número');
+        if ((m.mpClientId ?? '') !== id) { m.mpClientId = id || undefined; changed.push('billing.marketplace.mpClientId'); }
+      }
+      setSecret('billing.marketplace.mpClientSecret', m.mpClientSecret, b.marketplace.mpClientSecret, (v) => { m.mpClientSecret = v; });
     }
     if (b.successUrl !== undefined) {
       const u = String(b.successUrl).trim();

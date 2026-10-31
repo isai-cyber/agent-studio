@@ -228,6 +228,85 @@ export const MIGRATIONS: Migration[] = [
       ) ${TABLE}`);
     },
   },
+  {
+    version: 6,
+    name: 'webs con plantillas, catálogo, pedidos y cuentas de cobro (marketplace)',
+    async up(c) {
+      // Plantillas que sube el superadmin (de la plataforma, sin empresa)
+      await c.query(`CREATE TABLE IF NOT EXISTS site_templates (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        name VARCHAR(120) NOT NULL,
+        description VARCHAR(500) NULL,
+        html MEDIUMTEXT NOT NULL,
+        fields JSON NOT NULL,
+        active TINYINT(1) NOT NULL DEFAULT 1,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+      ) ${TABLE}`);
+      // La web de cada empresa (una por empresa): plantilla elegida y contenido editado
+      await c.query(`CREATE TABLE IF NOT EXISTS sites (
+        tenant_id INT UNSIGNED NOT NULL PRIMARY KEY,
+        template_id INT UNSIGNED NULL,
+        content JSON NOT NULL,
+        published TINYINT(1) NOT NULL DEFAULT 0,
+        custom_domain VARCHAR(190) NULL UNIQUE,
+        currency CHAR(3) NOT NULL DEFAULT 'MXN',
+        payment_provider ENUM('stripe','mercadopago') NULL,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE,
+        FOREIGN KEY (template_id) REFERENCES site_templates(id) ON DELETE SET NULL
+      ) ${TABLE}`);
+      await c.query(`CREATE TABLE IF NOT EXISTS products (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        tenant_id INT UNSIGNED NOT NULL,
+        name VARCHAR(160) NOT NULL,
+        description TEXT NULL,
+        price DECIMAL(12,2) NOT NULL,
+        image_url VARCHAR(500) NULL,
+        stock INT NULL,
+        active TINYINT(1) NOT NULL DEFAULT 1,
+        sort INT NOT NULL DEFAULT 0,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        INDEX (tenant_id),
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+      ) ${TABLE}`);
+      await c.query(`CREATE TABLE IF NOT EXISTS shop_orders (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        tenant_id INT UNSIGNED NOT NULL,
+        reference CHAR(24) NOT NULL UNIQUE,
+        provider ENUM('stripe','mercadopago') NOT NULL,
+        status ENUM('pending','paid','cancelled') NOT NULL DEFAULT 'pending',
+        customer_name VARCHAR(120) NULL,
+        customer_email VARCHAR(190) NULL,
+        items JSON NOT NULL,
+        total DECIMAL(12,2) NOT NULL,
+        currency CHAR(3) NOT NULL,
+        platform_fee DECIMAL(12,2) NOT NULL DEFAULT 0,
+        external_id VARCHAR(190) NULL,
+        payment_id VARCHAR(190) NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        paid_at TIMESTAMP NULL,
+        INDEX (tenant_id),
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+      ) ${TABLE}`);
+      // Cuenta de cobro de cada empresa en el marketplace: cuenta conectada de Stripe o
+      // autorización OAuth de Mercado Pago (tokens cifrados con la clave de la empresa)
+      await c.query(`CREATE TABLE IF NOT EXISTS payment_accounts (
+        tenant_id INT UNSIGNED NOT NULL,
+        provider ENUM('stripe','mercadopago') NOT NULL,
+        account_id VARCHAR(190) NOT NULL,
+        secrets TEXT NULL,
+        ready TINYINT(1) NOT NULL DEFAULT 0,
+        expires_at TIMESTAMP NULL,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+        PRIMARY KEY (tenant_id, provider),
+        INDEX (tenant_id),
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+      ) ${TABLE}`);
+      // El módulo nuevo entra en los planes Pro y Empresa
+      await c.query("INSERT IGNORE INTO plan_features (plan_id, feature_key) SELECT id, 'web_store' FROM plans WHERE plan_key IN ('pro', 'empresa')");
+    },
+  },
 ];
 
 export interface MigrationReport { applied: { version: number; name: string; warning?: string }[]; current: number }

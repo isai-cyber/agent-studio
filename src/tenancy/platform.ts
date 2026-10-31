@@ -46,3 +46,9 @@ export async function findInvitationByHash(hash: string): Promise<{ id: number; 
   const rows = await db().query('SELECT id, tenant_id, email, role_id, expires_at, accepted_at FROM invitations WHERE token_hash = ?', [hash]);
   return rows[0] ?? null;
 }
+
+// Web publicada por dominio propio (llega una petición con Host: www.cliente.com)
+export async function siteTenantByDomain(domain: string): Promise<number | null> {
+  const rows = await db().query('SELECT tenant_id FROM sites WHERE custom_domain = ? AND published = 1', [domain.toLowerCase()]);
+  return rows[0]?.tenant_id ?? null;
+}

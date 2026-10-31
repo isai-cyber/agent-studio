@@ -77,6 +77,30 @@ En **Empresas y planes → Empresas**, para cada cliente eliges:
 
 Las credenciales de Stripe (clave secreta) y Mercado Pago (access token), la moneda de cada uno y la página de vuelta tras pagar se ponen en **Empresas y planes → Ajustes**, cifradas. Son tus cuentas: tus clientes no configuran nada.
 
+## Webs y tiendas de tus clientes (plantillas + marketplace)
+
+Módulo **Web y tienda** (`web_store`, incluido en los planes Pro y Empresa; cada empresa lo activa en Configuración → Módulos).
+
+- **Tú subes las plantillas** en **Empresas y planes → Plantillas web**: el HTML y la lista de campos que el cliente puede editar (texto, texto largo, imagen, enlace, color). Con **Importar ejemplos** cargas las de `site-templates/` (ver su README para los marcadores `{{campo}}`, `{{#productos}}…{{/productos}}`, `{{comprar}}`, `{{carrito}}`). El HTML de las plantillas es tuyo y de confianza; lo que escribe cada cliente se escapa siempre y los enlaces solo pueden ser `http(s)`.
+- **Tus clientes solo editan** en **Mi web**: eligen plantilla, rellenan sus campos (con vista previa en vivo y subida de imágenes), gestionan el **catálogo** (precio, existencias, imagen, visible u oculto), ven sus **pedidos** y publican. No tocan el HTML.
+- **Su web** queda en `https://<tu-dominio>/s/<empresa>` y, si quieren, en **su propio dominio**: crean un CNAME a `PUBLIC_HOST` y la plataforma la sirve por la cabecera `Host`. Con Caddy, el certificado se emite solo y únicamente para dominios de webs publicadas:
+
+  ```
+  {
+    on_demand_tls {
+      ask http://localhost:3000/tls-allowed
+    }
+  }
+  https:// {
+    tls { on_demand }
+    reverse_proxy localhost:3000
+  }
+  ```
+- **Compra como marketplace**: el carrito y el pago los inyecta la plataforma en todas las webs (`public/site-shop.js`). Los precios se toman siempre del catálogo, se comprueban existencias y el dinero va a la cuenta **del cliente**; tú te quedas tu **comisión** (Ajustes → Marketplace, en %).
+  - **Stripe Connect** (cargos con destino): con tu clave secreta de Stripe, el cliente pulsa «Conectar Stripe», completa el alta de Stripe y cada venta es una Checkout Session con `transfer_data[destination]` = su cuenta y `application_fee_amount` = tu comisión. Webhook opcional `…/webhooks/stripe` (`checkout.session.completed`, `account.updated`) con su secreto `whsec_…`.
+  - **Mercado Pago Marketplace**: crea una aplicación en Mercado Pago Developers, registra la URL de redirección que ves en Ajustes (`…/oauth/mercadopago/callback`) y guarda su Client ID y Client secret. El cliente pulsa «Conectar Mercado Pago», autoriza con su cuenta y cada preferencia se crea con su token y `marketplace_fee` = tu comisión. Los tokens se guardan cifrados con la clave de su empresa y se renuevan solos.
+  - Un pedido solo se marca pagado tras consultar al proveedor (a la vuelta del comprador o por el aviso), una sola vez, y entonces se descuentan las existencias.
+
 ## Modo orquestado: Jev + Qwen/DeepSeek + Claude Code
 
 Con **Empresas y planes → Ajustes → Cómo responden los agentes = Orquestado** (o `AGENT_BACKEND=orquestado`), cada modelo hace lo que mejor y más barato hace:

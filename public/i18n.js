@@ -230,6 +230,24 @@ const EXACT = {
   'En modo orquestado, Jev (TypeSafe) es opcional: sin su clave, decide el propio orquestador. Dentro de Claude Code, Jev y el modelo rápido quedan disponibles como herramientas para las operaciones repetitivas.': 'In orchestrated mode, Jev (TypeSafe) is optional: without its key, the orchestrator decides. Inside Claude Code, Jev and the fast model are available as tools for repetitive operations.',
   'Jev (decidir)': 'Jev (decide)', 'Modelo rápido': 'Fast model', '¿Se cumple? (sí/no)': 'Does it hold? (yes/no)', 'Backend: orquestado': 'Backend: orchestrated', 'Escribe': 'Write', '(p. ej.': '(e.g.', 'https://tu-dominio.com/gracias': 'https://your-domain.com/thanks', 'Gestionar claves de API ': 'Manage API keys',
   'Comunicación': 'Communication', 'Analítica': 'Analytics', 'Básicos': 'Basics', 'Mensajería': 'Messaging', 'APIs públicas': 'Public APIs', 'Comercio': 'Commerce', 'Productividad': 'Productivity', 'Desarrollo': 'Development', 'Formularios': 'Forms', 'IA': 'AI',
+  // ---------- webs y tienda ----------
+  'Mi web y tienda': 'My website and store', 'Página': 'Page', 'Catálogo': 'Catalog', 'Pedidos': 'Orders', 'Cobros': 'Payments', '1. Elige una plantilla': '1. Choose a template',
+  '2. Personaliza': '2. Customize', '3. Publica': '3. Publish', 'Moneda': 'Currency', 'Dominio propio (opcional)': 'Custom domain (optional)', 'Web publicada': 'Website published', 'Dirección: ': 'Address: ',
+  'Vista previa': 'Preview', 'Nuevo producto': 'New product', 'Producto': 'Product', 'Precio': 'Price', 'Existencias': 'Stock', 'Visible': 'Visible', 'Oculto': 'Hidden', 'Aún no hay productos.': 'No products yet.',
+  'Existencias (vacío = sin límite)': 'Stock (empty = unlimited)', 'Orden': 'Order', 'Descripción': 'Description', 'Imagen': 'Image', 'Visible en la web': 'Visible on the website', 'Ocultar producto': 'Hide product',
+  'Fecha': 'Date', 'Pedido': 'Order', 'Cliente': 'Customer', 'Productos': 'Products', 'Total': 'Total', 'Comisión': 'Fee', 'Cobro': 'Payment', 'Estado': 'Status', 'Aún no hay pedidos.': 'No orders yet.',
+  'Pendiente': 'Pending', 'Pagado': 'Paid', 'Anulado': 'Cancelled', 'Conectar Stripe': 'Connect Stripe', 'Conectar Mercado Pago': 'Connect Mercado Pago', 'Continuar alta': 'Continue onboarding',
+  'Revisar cuenta': 'Review account', 'Comprobar estado': 'Check status', 'Desconectar': 'Disconnect', 'Conectada · lista para cobrar': 'Connected · ready to accept payments', 'Alta sin terminar': 'Onboarding incomplete',
+  'Sin conectar': 'Not connected', 'Cobrar con Stripe': 'Charge with Stripe', 'Cobrar con Mercado Pago': 'Charge with Mercado Pago', 'Elige una plantilla.': 'Choose a template.',
+  'Esta plantilla no tiene campos editables.': 'This template has no editable fields.', 'Plantillas web': 'Website templates', 'Importar ejemplos': 'Import examples', 'Nueva plantilla': 'New template',
+  'Campos': 'Fields', 'Activa': 'Active', 'Oculta': 'Hidden', 'Campos que el cliente puede editar': 'Fields the customer can edit', '+ Añadir campo': '+ Add field', 'Guardar plantilla': 'Save template',
+  'Disponible para los clientes': 'Available to customers', 'Marketplace de las webs': 'Website marketplace', 'Tu comisión por venta (%)': 'Your fee per sale (%)', 'Guardar marketplace': 'Save marketplace',
+  'Mi web y tienda ': 'My website and store', 'Superadmin: empresas, planes y plantillas': 'Superadmin: companies, plans and templates',
+  'Tarjetas de crédito y débito. Stripe te pedirá tus datos y tu cuenta bancaria.': 'Credit and debit cards. Stripe will ask for your details and bank account.',
+  'Tarjetas, saldo de Mercado Pago, OXXO y más. Inicia sesión con tu cuenta de Mercado Pago y autoriza.': 'Cards, Mercado Pago balance, OXXO and more. Sign in with your Mercado Pago account and authorize.',
+  'El administrador de la plataforma aún no lo ha habilitado.': "The platform administrator hasn't enabled it yet.",
+  'Todavía no hay plantillas disponibles. Pídele al administrador de la plataforma que suba alguna.': 'No templates available yet. Ask the platform administrator to upload one.',
+  'Tu web aún no puede cobrar: conecta Stripe o Mercado Pago en «Cobros». Mientras tanto se ve el catálogo sin botón de compra.': "Your website can't take payments yet: connect Stripe or Mercado Pago in “Payments”. Until then the catalog is shown without a buy button.",
 };
 
 // Comienzos de frase con una parte variable detrás (el resto se deja tal cual)

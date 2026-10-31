@@ -3,6 +3,7 @@
 // /api/*     API interna de la interfaz: sesión + empresa activa + permisos por ruta
 // /v1, /mcp  API pública: clave de API por empresa con scopes (public-api.ts)
 // /hooks/<empresa>/<id>  webhooks de los flujos
+// /s/<empresa>  webs de las empresas con su tienda (sites/routes.ts)
 import { createServer, type IncomingMessage, type ServerResponse, type Server } from 'node:http';
 import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
@@ -35,6 +36,7 @@ import { audit } from './tenancy/audit.ts';
 import { invalidatePermissions } from './authz/cache.ts';
 import { routes, route, send, sendBig, json, readBody, ipOf, query } from './http.ts';
 import { registerAdminRoutes } from './admin-routes.ts';
+import { registerSiteRoutes, handleSites } from './sites/routes.ts';
 import { localApiKey } from './tenancy/apikeys.ts';
 import { blockedFlowFeatures, filterModulesForTenant } from './features/enforce.ts';
 
@@ -272,6 +274,7 @@ route('GET', '/api/connect', { perm: 'agents.read' }, async (req, res, _p, ctx) 
 });
 
 registerAdminRoutes();
+registerSiteRoutes();
 
 // Webhook público de un flujo: /hooks/<empresa>/<id>. Responde con el resultado.
 // La ruta antigua /hooks/<id> sigue funcionando solo para la empresa Default (obsoleta).
@@ -375,6 +378,8 @@ export function createAppServer(): Server {
       const path = new URL(req.url ?? '/', 'http://x').pathname;
       if (await handlePublic(req, res, path)) return;
       if (path.startsWith('/hooks/')) return await handleHook(req, res, path.slice(7));
+      // Webs de las empresas (/s/<empresa>, dominios propios), OAuth y avisos de cobro
+      if (await handleSites(req, res, path)) return;
       // Audio generado por los flujos: /files/<tenant_id>/<uuid>.mp3 (nombre aleatorio, no adivinable)
       if (path.startsWith('/files/')) {
         const m = path.match(/^\/files\/([1-9]\d*)\/([\w-]+\.mp3)$/);

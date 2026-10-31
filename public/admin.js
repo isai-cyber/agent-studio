@@ -1,7 +1,8 @@
 // Superadmin de la plataforma: empresas (crear, suspender, entrar como soporte,
 // consumo del mes, idioma, forma de cobro y cobros), planes (límites, precio por
 // conversación y módulos incluidos) y ajustes (las claves de IA con las que das
-// el servicio y las cuentas de Stripe y Mercado Pago con las que cobras).
+// el servicio y las cuentas de Stripe y Mercado Pago con las que cobras), plantillas
+// de las webs de tus clientes y el marketplace (tu comisión por cada venta).
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
@@ -24,12 +25,12 @@ export function initPlatform(apiFn, postFn, onSupport) {
 
 export async function loadPlatformView(which) {
   if (which) tab = which;
-  $('#plat-tabs').innerHTML = [['tenants', 'Empresas'], ['plans', 'Planes'], ['settings', 'Ajustes']].map(([k, l]) => `<button data-plat-tab="${k}" class="${k === tab ? 'active' : ''}">${l}</button>`).join('');
+  $('#plat-tabs').innerHTML = [['tenants', 'Empresas'], ['plans', 'Planes'], ['templates', 'Plantillas web'], ['settings', 'Ajustes']].map(([k, l]) => `<button data-plat-tab="${k}" class="${k === tab ? 'active' : ''}">${l}</button>`).join('');
   $$('[data-plat-tab]').forEach((b) => (b.onclick = () => loadPlatformView(b.dataset.platTab)));
   const body = $('#plat-body');
   body.innerHTML = '<p class="muted">Cargando…</p>';
   try {
-    await (tab === 'tenants' ? renderTenants(body) : tab === 'plans' ? renderPlans(body) : renderSettings(body));
+    await (tab === 'tenants' ? renderTenants(body) : tab === 'plans' ? renderPlans(body) : tab === 'templates' ? renderTemplates(body) : renderSettings(body));
   } catch (e) {
     body.innerHTML = `<div class="m-banner warn-banner">✖ ${esc(e.message)}</div>`;
   }
@@ -183,7 +184,7 @@ async function renderCharges(el, tenantId, name, estimate) {
 
 // ---------- ajustes de la plataforma ----------
 async function renderSettings(body) {
-  const { settings, llm, billing, backend, jev } = await api('/api/platform/settings');
+  const [{ settings, llm, billing, backend, jev }, market] = await Promise.all([api('/api/platform/settings'), api('/api/platform/marketplace')]);
   const providers = [
     { key: 'typesafe', name: 'TypeSafe (Jev)', configured: jev.configured, models: [jev.model], test: true },
     ...llm.providers.filter((p) => !p.keyless).map((p) => ({ ...p, test: true })),
@@ -235,6 +236,21 @@ async function renderSettings(body) {
         <label class="cfg-field"><span>Página a la que vuelve el cliente tras pagar</span><input data-bill="successUrl" value="${esc(settings.billing.successUrl ?? '')}" placeholder="https://tu-dominio.com/gracias" /></label>
       </div>
       <div class="row"><button class="primary" id="save-billing">Guardar cobro</button><span class="muted small" id="billing-msg"></span></div>
+    </div>
+    <div class="card pad">
+      <h3>Marketplace de las webs</h3>
+      <p class="muted small">Las ventas de las webs de tus clientes se cobran a nombre de cada cliente (el dinero va a su cuenta) y tú te quedas una comisión. Tus clientes solo pulsan «Conectar»: no pegan claves.</p>
+      <ul class="muted small">
+        <li><b>Stripe Connect</b> usa tu clave secreta de arriba. Activa Connect en tu panel de Stripe. Aviso de pagos (webhook): <code>${esc(market.stripeWebhookUrl)}</code> con los eventos <code>checkout.session.completed</code> y <code>account.updated</code>.</li>
+        <li><b>Mercado Pago</b>: crea una aplicación de marketplace en Mercado Pago Developers y registra esta URL de redirección: <code>${esc(market.mpRedirectUri)}</code></li>
+      </ul>
+      <div class="plan-limits">
+        <label class="cfg-field"><span>Tu comisión por venta (%)</span><input data-mk="feePercent" type="number" min="0" max="50" step="0.1" value="${esc(settings.billing.marketplace?.feePercent ?? 0)}" /></label>
+        <label class="cfg-field"><span>Stripe: secreto del webhook ${market.stripeWebhookSigned ? '<span class="feat-status ok">Configurado</span>' : ''}</span><input type="password" autocomplete="off" data-mk="webhookSecret" placeholder="${esc(settings.billing.stripe?.webhookSecret ? `${settings.billing.stripe.webhookSecret} (vacío = sin cambios)` : 'whsec_…')}" /></label>
+        <label class="cfg-field"><span>Mercado Pago: Client ID de tu app</span><input data-mk="mpClientId" inputmode="numeric" value="${esc(settings.billing.marketplace?.mpClientId ?? '')}" /></label>
+        <label class="cfg-field"><span>Mercado Pago: Client secret ${market.mercadopago ? '<span class="feat-status ok">Configurado</span>' : ''}</span><input type="password" autocomplete="off" data-mk="mpClientSecret" placeholder="${esc(settings.billing.marketplace?.mpClientSecret ? `${settings.billing.marketplace.mpClientSecret} (vacío = sin cambios)` : 'Client secret')}" /></label>
+      </div>
+      <div class="row"><button class="primary" id="save-market">Guardar marketplace</button><span class="muted small" id="market-msg"></span></div>
     </div>`;
   const put = async (data, msgEl) => {
     try {
@@ -264,4 +280,84 @@ async function renderSettings(body) {
     }
     put({ billing }, '#billing-msg');
   };
+  $('#save-market').onclick = () => {
+    const v = Object.fromEntries($$('[data-mk]', body).map((i) => [i.dataset.mk, i.value.trim()]));
+    put({ billing: { stripe: { webhookSecret: v.webhookSecret }, marketplace: { feePercent: v.feePercent, mpClientId: v.mpClientId, mpClientSecret: v.mpClientSecret } } }, '#market-msg');
+  };
+}
+
+// ---------- Plantillas web ----------
+// Tú subes el HTML y declaras qué campos puede editar cada cliente; ellos no tocan el HTML.
+const FIELD_TYPES = [['text', 'Texto'], ['textarea', 'Texto largo'], ['image', 'Imagen'], ['url', 'Enlace'], ['color', 'Color']];
+
+async function renderTemplates(body) {
+  const list = await api('/api/platform/site-templates');
+  body.innerHTML = `
+    <div class="card pad">
+      <div class="row" style="justify-content:space-between;margin:0"><h3 style="margin:0">Plantillas web</h3>
+        <span><button class="ghost" id="tpl-examples">Importar ejemplos</button> <button class="primary" id="tpl-new">Nueva plantilla</button></span></div>
+      <p class="muted small">Tus clientes eligen una plantilla activa y solo editan los campos que declares. Marcadores: <code>{{clave}}</code> de cada campo, <code>{{empresa}}</code>, <code>{{#productos}}…{{/productos}}</code> con <code>{{nombre}} {{descripcion}} {{precio}} {{imagen}} {{comprar}}</code>, y <code>{{carrito}}</code>. El carrito y el pago los añade la plataforma.</p>
+      <div class="tbl wide"><table><thead><tr><th>Nombre</th><th>Campos</th><th>Estado</th><th></th></tr></thead><tbody>
+      ${list.map((t) => `<tr><td><b>${esc(t.name)}</b><br><small class="muted">${esc(t.description ?? '')}</small>${t.undeclared.length ? `<br><small class="feat-status warn">Sin declarar: ${t.undeclared.map(esc).join(', ')}</small>` : ''}</td>
+        <td>${t.fields.map((f) => esc(f.label)).join(', ') || '—'}</td>
+        <td><span class="feat-status ${t.active ? 'ok' : 'off'}">${t.active ? 'Activa' : 'Oculta'}</span></td>
+        <td class="row" style="margin:0"><a class="ghost link-btn" href="/api/platform/site-templates/${t.id}/preview" target="_blank" rel="noopener">Vista previa</a><button class="ghost" data-tpl-edit="${t.id}">Editar</button></td></tr>`).join('') || '<tr><td colspan="4" class="muted">Aún no hay plantillas. Pulsa «Importar ejemplos» o «Nueva plantilla».</td></tr>'}
+      </tbody></table></div>
+    </div>
+    <div id="tpl-editor"></div>`;
+  $('#tpl-new').onclick = () => templateEditor(body, null);
+  $$('[data-tpl-edit]', body).forEach((b) => (b.onclick = () => templateEditor(body, list.find((t) => t.id === Number(b.dataset.tplEdit)))));
+  $('#tpl-examples').onclick = async () => {
+    try { const r = await post('/api/platform/site-templates/examples'); await renderTemplates(body); alert(r.added.length ? `Importadas: ${r.added.join(', ')}` : 'Los ejemplos ya estaban importados.'); }
+    catch (err) { alert(err.message); }
+  };
+}
+
+function templateEditor(body, t) {
+  const el = $('#tpl-editor');
+  let fields = structuredClone(t?.fields ?? []);
+  const fieldRows = () => fields.map((f, i) => `<div class="row tpl-field" data-i="${i}" style="margin:4px 0">
+      <input data-f="key" value="${esc(f.key)}" placeholder="clave (p. ej. titulo)" style="max-width:150px" />
+      <input data-f="label" value="${esc(f.label)}" placeholder="Etiqueta para el cliente" />
+      <select data-f="type">${FIELD_TYPES.map(([v, l]) => `<option value="${v}" ${v === f.type ? 'selected' : ''}>${l}</option>`).join('')}</select>
+      <input data-f="default" value="${esc(f.default ?? '')}" placeholder="Valor por defecto" />
+      <button class="ghost" data-f-del="${i}" title="Quitar">✕</button></div>`).join('');
+  const read = () => { fields = $$('.tpl-field', el).map((r) => Object.fromEntries($$('[data-f]', r).map((i) => [i.dataset.f, i.value.trim()]))).map((f) => (f.default ? f : { key: f.key, label: f.label, type: f.type })); };
+  const draw = () => {
+    el.innerHTML = `<div class="card pad">
+      <h3>${t ? `Editar «${esc(t.name)}»` : 'Nueva plantilla'}</h3>
+      <div class="plan-limits">
+        <label class="cfg-field"><span>Nombre</span><input id="tpl-name" maxlength="120" value="${esc(t?.name ?? '')}" /></label>
+        <label class="cfg-field"><span>Descripción</span><input id="tpl-desc" maxlength="500" value="${esc(t?.description ?? '')}" /></label>
+      </div>
+      <label class="switch"><input type="checkbox" id="tpl-active" ${t?.active === false ? '' : 'checked'} /><span></span>Disponible para los clientes</label>
+      <h4>Campos que el cliente puede editar</h4>
+      <div id="tpl-fields">${fieldRows()}</div>
+      <button class="ghost" id="tpl-add-field">+ Añadir campo</button>
+      <h4>HTML</h4>
+      <div class="row" style="margin:0 0 6px"><input type="file" id="tpl-file" accept=".html,text/html" /><small class="muted">o pega el código:</small></div>
+      <textarea id="tpl-html" rows="16" spellcheck="false" style="width:100%;font-family:monospace">${esc(t?.html ?? '')}</textarea>
+      <div class="row"><button class="primary" id="tpl-save">Guardar plantilla</button><button class="ghost" id="tpl-cancel">Cancelar</button><span class="muted small" id="tpl-msg"></span></div>
+    </div>`;
+    $('#tpl-add-field').onclick = () => { read(); fields.push({ key: '', label: '', type: 'text' }); keep(draw); };
+    $$('[data-f-del]', el).forEach((b) => (b.onclick = () => { read(); fields.splice(Number(b.dataset.fDel), 1); keep(draw); }));
+    $('#tpl-file').onchange = async (e) => { const f = e.target.files[0]; if (f) $('#tpl-html').value = await f.text(); };
+    $('#tpl-cancel').onclick = () => { el.innerHTML = ''; };
+    $('#tpl-save').onclick = async () => {
+      read();
+      const data = { name: $('#tpl-name').value, description: $('#tpl-desc').value, html: $('#tpl-html').value, active: $('#tpl-active').checked, fields: fields.filter((f) => f.key) };
+      try {
+        await api(t ? `/api/platform/site-templates/${t.id}` : '/api/platform/site-templates', json(t ? 'PUT' : 'POST', data));
+        await renderTemplates(body);
+      } catch (err) { $('#tpl-msg').textContent = `✖ ${err.message}`; }
+    };
+  };
+  // Al redibujar los campos se conserva lo escrito en nombre/HTML
+  const keep = (fn) => {
+    const v = { name: $('#tpl-name').value, desc: $('#tpl-desc').value, html: $('#tpl-html').value, active: $('#tpl-active').checked };
+    fn();
+    $('#tpl-name').value = v.name; $('#tpl-desc').value = v.desc; $('#tpl-html').value = v.html; $('#tpl-active').checked = v.active;
+  };
+  draw();
+  el.scrollIntoView({ behavior: 'smooth' });
 }

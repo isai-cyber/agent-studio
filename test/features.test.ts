@@ -47,7 +47,7 @@ const feature = async (key: string) => (await owner.get('/api/tenant/features'))
 
 test('el registro es válido y no tiene ciclos', () => {
   assert.deepEqual(registry.validateRegistry(), []);
-  assert.equal(registry.FEATURES.length, 15);
+  assert.equal(registry.FEATURES.length, 16);
   assert.deepEqual(registry.dependenciesOf('cfdi').sort(), ['crm', 'inventory', 'orders']);
   assert.deepEqual(registry.dependentsOf('crm').sort(), ['campaigns', 'cfdi', 'inbox', 'orders', 'scheduling']);
   assert.ok(registry.validateRegistry([{ ...registry.FEATURES[0], key: 'a', dependsOn: ['b'] }, { ...registry.FEATURES[0], key: 'b', dependsOn: ['a'], permissions: [] }]).some((e) => e.includes('ciclo')));

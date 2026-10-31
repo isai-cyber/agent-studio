@@ -36,13 +36,16 @@
       <button data-view="metrics" title="Métricas" aria-label="Métricas">
         <svg viewBox="0 0 24 24"><path d="M4 20V10m6 10V4m6 16v-7m4 7H3"/></svg>
       </button>
+      <button data-view="web" title="Mi web y tienda" aria-label="Mi web y tienda" hidden>
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.5 2.7 3.8 5.7 3.8 9s-1.3 6.3-3.8 9c-2.5-2.7-3.8-5.7-3.8-9S9.5 5.7 12 3z"/></svg>
+      </button>
       <button data-view="connect" title="Conectar (API y MCP)" aria-label="Conectar (API y MCP)">
         <svg viewBox="0 0 24 24"><path d="M9 7V3m6 4V3M7 7h10v4a5 5 0 0 1-10 0zM12 16v5"/></svg>
       </button>
       <button data-view="settings" title="Configuración" aria-label="Configuración" hidden>
         <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg>
       </button>
-      <button data-view="platform" title="Superadmin: empresas y planes" aria-label="Superadmin: empresas y planes" hidden>
+      <button data-view="platform" title="Superadmin: empresas, planes y plantillas" aria-label="Superadmin: empresas, planes y plantillas" hidden>
         <svg viewBox="0 0 24 24"><path d="M3 21h18M5 21V8l7-5 7 5v13M9 21v-6h6v6M9 11h.01M15 11h.01"/></svg>
       </button>
     </nav>
@@ -236,6 +239,13 @@
       </header>
       <div id="set-tabs" class="seg set-tabs" role="tablist"></div>
       <div id="set-body" class="set-body"></div>
+    </section>
+
+    <!-- Mi web: plantilla, catálogo, pedidos y cobros -->
+    <section id="view-web" class="view">
+      <header class="view-head"><h1>Mi web y tienda</h1></header>
+      <div id="web-tabs" class="seg set-tabs" role="tablist"></div>
+      <div id="web-body" class="set-body"></div>
     </section>
 
     <!-- Superadmin -->

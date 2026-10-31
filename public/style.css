@@ -925,3 +925,13 @@ li[data-state="done"] .ob-dot::after { content: "✓"; color: #fff; font-weight:
 .mode { display: flex; flex-direction: column; gap: 4px; padding: 12px 14px; border: 1px solid var(--line); border-radius: 12px; cursor: pointer; }
 .mode.on { border-color: var(--accent); background: var(--accent-soft); }
 .mode input { width: auto; }
+
+/* ---------- webs de las empresas ---------- */
+.link-btn { display: inline-flex; align-items: center; padding: 6px 10px; border-radius: 8px; text-decoration: none; color: inherit; border: 1px solid var(--line, #ddd); font-size: 12.5px; }
+.web-grid { display: grid; grid-template-columns: minmax(280px, 420px) 1fr; gap: 16px; align-items: start; }
+.web-grid iframe { width: 100%; height: 70vh; border: 1px solid var(--line, #ddd); border-radius: 12px; background: #fff; }
+.tpl-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; }
+.tpl-pick label { border: 1px solid var(--line, #ddd); border-radius: 10px; padding: 10px; cursor: pointer; }
+.tpl-pick label.on { outline: 2px solid var(--accent, #2563eb); }
+.prod-img { width: 48px; height: 48px; object-fit: cover; border-radius: 6px; background: #eee; }
+@media (max-width: 900px) { .web-grid { grid-template-columns: 1fr; } }

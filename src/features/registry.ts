@@ -90,6 +90,12 @@ export const FEATURES: FeatureDef[] = [
     },
   }),
   def({
+    key: 'web_store', name: 'Web y tienda', group: 'ecommerce',
+    description: 'Página web con plantillas de la plataforma, catálogo de productos y compra online con Stripe o Mercado Pago (el dinero va a tu cuenta).',
+    permissions: ['web_store.site.read', 'web_store.site.write', 'web_store.products.read', 'web_store.products.write', 'web_store.orders.read', 'web_store.payments.manage'],
+    navItems: ['/web'],
+  }),
+  def({
     key: 'inbox', name: 'Bandeja compartida', group: 'ecommerce',
     description: 'Traspaso a una persona, asignación de conversaciones y estados.',
     dependsOn: ['crm'],
