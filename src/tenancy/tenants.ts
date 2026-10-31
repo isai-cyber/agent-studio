@@ -18,12 +18,21 @@ export interface Plan {
   features: string[];
 }
 
-export interface Tenant { id: number; name: string; slug: string; planId: number; status: TenantStatus; country: string | null; createdAt?: string }
+export type Language = 'es' | 'en';
+export type BillingProvider = 'stripe' | 'mercadopago';
+export const LANGUAGES: Record<Language, string> = { es: 'español', en: 'inglés' };
+
+export interface Tenant {
+  id: number; name: string; slug: string; planId: number; status: TenantStatus; country: string | null; createdAt?: string;
+  language: Language; // idioma de la interfaz y de los agentes de la empresa
+  billingProvider: BillingProvider | null; // con qué le cobra la plataforma
+  billingEmail: string | null;
+}
 
 const fail = (status: number, message: string) => Object.assign(new Error(message), { status });
 
 // Empresa Default cuando no hay base de datos (todo en un solo espacio, como antes)
-export const LOCAL_TENANT: Tenant = { id: DEFAULT_TENANT_ID, name: 'Default', slug: DEFAULT_TENANT_SLUG, planId: 0, status: 'active', country: null };
+export const LOCAL_TENANT: Tenant = { id: DEFAULT_TENANT_ID, name: 'Default', slug: DEFAULT_TENANT_SLUG, planId: 0, status: 'active', country: null, language: (process.env.DEFAULT_LANGUAGE === 'en' ? 'en' : 'es'), billingProvider: null, billingEmail: null };
 export const LOCAL_PLAN: Plan = { id: 0, key: 'local', name: 'Instalación local', maxConversationsMonth: null, maxUsers: null, maxAgents: null, maxCampaignMessages: null, pricePerConversation: 0, features: [] };
 
 const TTL = 30_000;
@@ -39,7 +48,7 @@ export function invalidateTenants(): void {
   cache.clear();
 }
 
-const rowToTenant = (r: any): Tenant => ({ id: r.id, name: r.name, slug: r.slug, planId: r.plan_id, status: r.status, country: r.country ?? null, createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined });
+const rowToTenant = (r: any): Tenant => ({ id: r.id, name: r.name, slug: r.slug, planId: r.plan_id, status: r.status, country: r.country ?? null, createdAt: r.created_at ? new Date(r.created_at).toISOString() : undefined, language: r.language === 'en' ? 'en' : 'es', billingProvider: r.billing_provider ?? null, billingEmail: r.billing_email ?? null });
 
 export async function getTenant(id: number): Promise<Tenant | null> {
   if (!dbEnabled) return id === DEFAULT_TENANT_ID ? LOCAL_TENANT : null;
@@ -107,7 +116,27 @@ export async function uniqueSlug(name: string): Promise<string> {
   return slug;
 }
 
-export async function createTenant(input: { name: string; slug?: string; planId: number; country?: string | null }): Promise<Tenant> {
+function checkLanguage(v: unknown): Language {
+  if (v !== 'es' && v !== 'en') throw fail(400, 'Idioma no válido (es o en)');
+  return v;
+}
+function checkBilling(v: unknown): BillingProvider | null {
+  if (v === null || v === '') return null;
+  if (v !== 'stripe' && v !== 'mercadopago') throw fail(400, 'Forma de cobro no válida (stripe o mercadopago)');
+  return v;
+}
+function checkEmail(v: unknown): string | null {
+  const e = v === null || v === undefined ? '' : String(v).trim().toLowerCase();
+  if (!e) return null;
+  if (!/^[^\s@]{1,64}@[^\s@]{1,180}\.[^\s@]{2,}$/.test(e)) throw fail(400, 'Email de facturación no válido');
+  return e;
+}
+
+export async function tenantLanguage(id: number): Promise<Language> {
+  return (await getTenant(id))?.language ?? 'es';
+}
+
+export async function createTenant(input: { name: string; slug?: string; planId: number; country?: string | null; language?: string; billingProvider?: string | null; billingEmail?: string | null }): Promise<Tenant> {
   const name = String(input.name ?? '').trim();
   if (!name || name.length > 120) throw fail(400, 'Escribe el nombre de la empresa (máximo 120 caracteres).');
   const slug = input.slug ? String(input.slug).trim().toLowerCase() : await uniqueSlug(name);
@@ -116,12 +145,15 @@ export async function createTenant(input: { name: string; slug?: string; planId:
   if (!(await getPlan(Number(input.planId)))) throw fail(400, 'Elige un plan válido.');
   const country = input.country ? String(input.country).toUpperCase() : null;
   if (country && !/^[A-Z]{2}$/.test(country)) throw fail(400, 'El país debe ser un código de 2 letras (p. ej. MX).');
-  const r = await db().query('INSERT INTO tenants (name, slug, plan_id, country) VALUES (?, ?, ?, ?)', [name, slug, Number(input.planId), country]);
+  const language = checkLanguage(input.language ?? 'es');
+  const billingProvider = checkBilling(input.billingProvider ?? null);
+  const billingEmail = checkEmail(input.billingEmail ?? null);
+  const r = await db().query('INSERT INTO tenants (name, slug, plan_id, country, language, billing_provider, billing_email) VALUES (?, ?, ?, ?, ?, ?, ?)', [name, slug, Number(input.planId), country, language, billingProvider, billingEmail]);
   invalidateTenants();
   return (await getTenant(r.insertId))!;
 }
 
-export async function updateTenant(id: number, patch: Partial<Pick<Tenant, 'name' | 'planId' | 'status' | 'country'>>): Promise<{ before: Tenant; after: Tenant }> {
+export async function updateTenant(id: number, patch: Partial<Pick<Tenant, 'name' | 'planId' | 'status' | 'country' | 'language' | 'billingProvider' | 'billingEmail'>>): Promise<{ before: Tenant; after: Tenant }> {
   const before = await getTenant(id);
   if (!before) throw fail(404, 'Empresa no encontrada');
   const sets: string[] = [];
@@ -134,6 +166,9 @@ export async function updateTenant(id: number, patch: Partial<Pick<Tenant, 'name
     sets.push('status = ?'); params.push(patch.status);
   }
   if (patch.country !== undefined) { const c = patch.country ? String(patch.country).toUpperCase() : null; if (c && !/^[A-Z]{2}$/.test(c)) throw fail(400, 'País no válido'); sets.push('country = ?'); params.push(c); }
+  if (patch.language !== undefined) { sets.push('language = ?'); params.push(checkLanguage(patch.language)); }
+  if (patch.billingProvider !== undefined) { sets.push('billing_provider = ?'); params.push(checkBilling(patch.billingProvider)); }
+  if (patch.billingEmail !== undefined) { sets.push('billing_email = ?'); params.push(checkEmail(patch.billingEmail)); }
   if (sets.length) await db().query(`UPDATE tenants SET ${sets.join(', ')} WHERE id = ?`, [...params, id]);
   invalidateTenants();
   return { before, after: (await getTenant(id))! };

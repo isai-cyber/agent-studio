@@ -1,18 +1,20 @@
 // Varios proveedores de LLM (DeepSeek, Qwen…): rutas por tarea, el modelo más barato
-// para clasificar, respaldo si un proveedor falla, claves por empresa y coste por modelo.
+// para clasificar, respaldo si un proveedor falla, claves de la plataforma y coste por modelo.
 // Las llamadas a los proveedores se simulan con un fetch falso.
 import { test, beforeEach } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { setupEnv } from './_helpers.ts';
 
-await setupEnv('llm');
+const env = await setupEnv('llm');
 process.env.DEEPSEEK_API_KEY = 'sk-deepseek-servidor';
 process.env.QWEN_API_KEY = 'sk-qwen-servidor';
 process.env.LLM_MODEL = 'qwen:qwen-plus';
 const { chat, llmAvailable } = await import('../src/llm.ts');
 const { parseModel, priceOf } = await import('../src/llm-providers.ts');
 const { runTurn, readEvents } = await import('../src/metrics.ts');
-const { setConnection } = await import('../src/connections.ts');
+const { updatePlatformSettings, maskedSettings } = await import('../src/platform-settings.ts');
 
 interface Call { url: string; key: string; model: string }
 let calls: Call[] = [];
@@ -69,23 +71,40 @@ test('si un proveedor falla (429, 5xx) se usa el de respaldo; un 400 no se reint
   await assert.rejects(chat(msg), /Ningún proveedor de LLM respondió/);
 });
 
-test('una empresa con su propia clave la usa; las demás, la del servidor', async () => {
-  await setConnection(2, 'qwen', { apiKey: 'sk-qwen-de-la-empresa-2' });
+test('todas las empresas usan la clave de la plataforma; la de Ajustes manda sobre el .env', async () => {
+  await chat(msg, { tenantId: 2 });
+  assert.equal(calls[0].key, 'sk-qwen-servidor');
+  updatePlatformSettings({ llmKeys: { qwen: 'sk-qwen-de-ajustes' } });
   await chat(msg, { tenantId: 2 });
   await chat(msg, { tenantId: 3 });
-  assert.equal(calls[0].key, 'sk-qwen-de-la-empresa-2');
-  assert.equal(calls[1].key, 'sk-qwen-servidor');
+  assert.equal(calls[1].key, 'sk-qwen-de-ajustes');
+  assert.equal(calls[2].key, 'sk-qwen-de-ajustes');
+  // Lo guardado no contiene la clave en claro y la interfaz la ve enmascarada
+  assert.ok(!readFileSync(join(env.dataDir, 'platform', 'settings.json'), 'utf8').includes('sk-qwen-de-ajustes'));
+  assert.equal(maskedSettings().llmKeys.qwen, '••••stes');
+  updatePlatformSettings({ llmKeys: { qwen: null } });
+  await chat(msg);
+  assert.equal(calls[3].key, 'sk-qwen-servidor');
 });
 
-test('sin claves no hay modelo, salvo la clave propia de la empresa', async () => {
+test('los modelos por tarea de Ajustes mandan sobre el .env', async () => {
+  updatePlatformSettings({ llm: { model: 'deepseek:deepseek-v4-pro', classify: 'deepseek:deepseek-flash', fallbacks: ['qwen:qwen-plus'] } });
+  try {
+    assert.equal((await chat(msg)).model, 'deepseek:deepseek-v4-pro');
+    assert.equal((await chat(msg, { purpose: 'classify' })).model, 'deepseek:deepseek-flash');
+    assert.throws(() => updatePlatformSettings({ llm: { model: 'no vale' } }), /Modelo no válido/);
+  } finally {
+    updatePlatformSettings({ llm: { model: '', classify: '', flows: '', fallbacks: [] } });
+  }
+});
+
+test('sin claves de la plataforma no hay servicio de IA', async () => {
   const saved = { d: process.env.DEEPSEEK_API_KEY, q: process.env.QWEN_API_KEY };
   delete process.env.DEEPSEEK_API_KEY;
   delete process.env.QWEN_API_KEY;
   try {
     assert.equal(await llmAvailable(3), false);
-    await assert.rejects(chat(msg, { tenantId: 3 }), /No hay ningún modelo configurado/);
-    assert.equal(await llmAvailable(2), true);
-    assert.equal((await chat(msg, { tenantId: 2 })).model, 'qwen:qwen-plus');
+    await assert.rejects(chat(msg, { tenantId: 3 }), /servicio de IA no está configurado/);
   } finally {
     process.env.DEEPSEEK_API_KEY = saved.d;
     process.env.QWEN_API_KEY = saved.q;

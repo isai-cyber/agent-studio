@@ -5,6 +5,9 @@ import { ensureAuth, sessionExpired } from './auth.js';
 import { ctx, loadContext, can, isPlatformAdmin } from './context.js';
 import { initSettings, loadSettingsView } from './settings.js';
 import { initPlatform, loadPlatformView } from './admin.js';
+import { setLanguage, initialLanguage } from './i18n.js';
+
+setLanguage(initialLanguage());
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -90,6 +93,8 @@ function applyContext() {
 
 export async function refreshContext() {
   await loadContext(api);
+  // Idioma de la empresa (lo elige el superadmin): español o inglés
+  if (ctx?.tenant?.language) setLanguage(ctx.tenant.language);
   setTenantSlug(ctx?.tenant?.slug);
   applyContext();
 }

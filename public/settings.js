@@ -5,7 +5,7 @@ import { ctx, can, isPlatformAdmin } from './context.js';
 const $ = (s, el = document) => el.querySelector(s);
 const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
-const fmtDate = (d) => (d ? new Date(d).toLocaleString('es', { dateStyle: 'short', timeStyle: 'short' }) : '—');
+const fmtDate = (d) => (d ? new Date(d).toLocaleString(document.documentElement.lang === 'en' ? 'en' : 'es', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 
 let api, post, refreshContext, go;
 let tab = 'features';
@@ -17,6 +17,7 @@ const TABS = [
   { k: 'roles', label: 'Roles', show: () => can('tenant.roles.manage') || can('tenant.users.manage') },
   { k: 'apikeys', label: 'Claves de API', show: () => can('tenant.apikeys.manage') },
   { k: 'audit', label: 'Auditoría', show: () => can('audit.read') },
+  { k: 'billing', label: 'Facturación', show: () => can('tenant.billing.manage') && !ctx?.local },
 ];
 
 export function initSettings(apiFn, postFn, refresh, show) {
@@ -36,7 +37,7 @@ export async function loadSettingsView(which) {
   const body = $('#set-body');
   body.innerHTML = '<p class="muted">Cargando…</p>';
   try {
-    await { features: renderFeatures, users: renderUsers, roles: renderRoles, apikeys: renderApiKeys, audit: renderAudit }[tab](body);
+    await { features: renderFeatures, users: renderUsers, roles: renderRoles, apikeys: renderApiKeys, audit: renderAudit, billing: renderBilling }[tab](body);
   } catch (e) {
     body.innerHTML = `<div class="m-banner warn-banner">✖ ${esc(e.message)}</div>`;
   }
@@ -351,4 +352,26 @@ async function renderAudit(body) {
   $('#aud-form').onsubmit = (e) => { e.preventDefault(); load(true); };
   $('#aud-more').onclick = () => load(false);
   await load(true);
+}
+
+// ---------- Facturación (Propietario) ----------
+
+const CHARGE = { pending: ['Pendiente de pago', 'warn'], paid: ['Pagado', 'ok'], cancelled: ['Anulado', 'off'] };
+
+async function renderBilling(body) {
+  const b = await api('/api/tenant/billing');
+  const lim = (v) => (v === null || v === undefined ? 'Sin límite' : Number(v).toLocaleString());
+  body.innerHTML = `
+    <div class="kpis">
+      <div class="kpi"><div class="k-label">Plan</div><div class="k-value">${esc(b.plan.name)}</div></div>
+      <div class="kpi"><div class="k-label">Conversaciones este mes</div><div class="k-value">${Number(b.usage.conversations).toLocaleString()}</div><div class="k-sub">Límite: ${lim(b.plan.maxConversationsMonth)}</div></div>
+      <div class="kpi"><div class="k-label">Agentes</div><div class="k-value">${b.agents}</div><div class="k-sub">Límite: ${lim(b.plan.maxAgents)}</div></div>
+      <div class="kpi"><div class="k-label">Usuarios</div><div class="k-value">${lim(b.plan.maxUsers)}</div><div class="k-sub">permitidos</div></div>
+    </div>
+    <h3>Cobros</h3>
+    ${b.charges.length ? `<div class="tbl wide"><table><thead><tr><th>Fecha</th><th>Concepto</th><th>Importe</th><th>Estado</th><th></th></tr></thead><tbody>
+      ${b.charges.map((c) => `<tr><td>${fmtDate(c.createdAt)}</td><td>${esc(c.description)}</td><td>${c.amount.toFixed(2)} ${esc(c.currency)}</td>
+        <td><span class="feat-status ${CHARGE[c.status][1]}">${CHARGE[c.status][0]}</span></td>
+        <td class="actions">${c.status === 'pending' && c.url ? `<a class="primary-link" href="${esc(c.url)}" target="_blank" rel="noopener">Pagar ↗</a>` : ''}</td></tr>`).join('')}
+    </tbody></table></div>` : '<p class="muted">No tienes cobros pendientes.</p>'}`;
 }

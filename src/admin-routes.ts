@@ -20,6 +20,10 @@ import { tenantFeatures, setFeatureEnabled, setFeatureConfig } from './features/
 import { usageSince } from './metrics.ts';
 import { countAgents } from './store.ts';
 import { DEFAULT_TENANT_ID } from './tenancy/paths.ts';
+import { maskedSettings, updatePlatformSettings } from './platform-settings.ts';
+import { llmStatus, testProvider } from './llm.ts';
+import { billingStatus, listCharges, createCharge, refreshCharge, setChargeStatus } from './platform-billing.ts';
+import { LANGUAGES } from './tenancy/tenants.ts';
 
 const fail = (status: number, message: string) => Object.assign(new Error(message), { status });
 const actorOf = (ctx: Ctx) => ({ actor: ctx.actor, ip: ctx.ip });
@@ -182,7 +186,8 @@ export function registerAdminRoutes(): void {
 
   // ---------- facturación y baja de la empresa (solo Propietario) ----------
   route('GET', '/api/tenant/billing', { perm: 'tenant.billing.manage' }, async (_req, res, _p, ctx) => {
-    send(res, 200, { plan: ctx.plan, usage: await usageSince(ctx.tenantId, monthStart()), agents: await countAgents(ctx.tenantId) });
+    // Los cobros pendientes llevan su enlace de pago (Stripe o Mercado Pago)
+    send(res, 200, { plan: ctx.plan, usage: await usageSince(ctx.tenantId, monthStart()), agents: await countAgents(ctx.tenantId), charges: dbEnabled ? await listCharges(ctx.tenantId) : [] });
   });
   route('DELETE', '/api/tenant', { perm: 'tenant.delete' }, async (req, res, _p, ctx) => {
     const { confirm } = await json<{ confirm?: string }>(req);
@@ -206,8 +211,8 @@ export function registerAdminRoutes(): void {
     })));
   });
   route('POST', '/api/platform/tenants', { platform: true }, async (req, res, _p, ctx) => {
-    const body = await json<{ name?: string; slug?: string; planId?: number; country?: string; ownerEmail?: string }>(req);
-    const t = await createTenant({ name: String(body.name ?? ''), slug: body.slug || undefined, planId: Number(body.planId), country: body.country || null });
+    const body = await json<{ name?: string; slug?: string; planId?: number; country?: string; ownerEmail?: string; language?: string; billingProvider?: string; billingEmail?: string }>(req);
+    const t = await createTenant({ name: String(body.name ?? ''), slug: body.slug || undefined, planId: Number(body.planId), country: body.country || null, language: body.language || 'es', billingProvider: body.billingProvider || null, billingEmail: body.billingEmail || body.ownerEmail || null });
     await audit({ tenantId: null, ...actorOf(ctx), action: 'tenant.created', target: `tenant:${t.id}`, after: t });
     await audit({ tenantId: t.id, ...actorOf(ctx), action: 'tenant.created', target: `tenant:${t.id}`, after: t });
     let invitation: unknown = null;
@@ -219,7 +224,7 @@ export function registerAdminRoutes(): void {
     send(res, 201, { tenant: t, invitation });
   });
   route('PUT', '/api/platform/tenants/:id', { platform: true }, async (req, res, [id], ctx) => {
-    const body = await json<{ name?: string; planId?: number; status?: 'active' | 'suspended' | 'deleted'; country?: string | null }>(req);
+    const body = await json<{ name?: string; planId?: number; status?: 'active' | 'suspended' | 'deleted'; country?: string | null; language?: 'es' | 'en'; billingProvider?: 'stripe' | 'mercadopago' | null; billingEmail?: string | null }>(req);
     const r = await updateTenant(Number(id), body);
     invalidatePermissions(Number(id));
     const action = body.status && body.status !== r.before.status ? (body.status === 'suspended' ? 'tenant.suspended' : body.status === 'active' ? 'tenant.reactivated' : 'tenant.deleted') : 'tenant.updated';
@@ -265,6 +270,42 @@ export function registerAdminRoutes(): void {
     const r = await savePlan({ ...(await planBody(req)), id: Number(id) });
     invalidatePermissions();
     await audit({ tenantId: null, ...actorOf(ctx), action: 'plan.updated', target: `plan:${id}`, before: r.before, after: r.after });
+    send(res, 200, r.after);
+  });
+
+  // ---------- superadmin: ajustes de la plataforma (claves de IA y de cobro) ----------
+  // Tú das el servicio: las claves de IA son tuyas y las usan todas las empresas.
+  route('GET', '/api/platform/settings', { platform: true }, async (_req, res) => {
+    send(res, 200, { settings: maskedSettings(), llm: llmStatus(), billing: billingStatus(), languages: LANGUAGES });
+  });
+  route('PUT', '/api/platform/settings', { platform: true }, async (req, res, _p, ctx) => {
+    const r = updatePlatformSettings(await json(req));
+    // En la auditoría solo van los nombres de los campos que cambiaron, nunca las claves
+    if (r.changed.length) await audit({ tenantId: null, ...actorOf(ctx), action: 'platform.settings_updated', target: 'platform:settings', after: { fields: r.changed } });
+    send(res, 200, { changed: r.changed, settings: maskedSettings(), llm: llmStatus(), billing: billingStatus() });
+  });
+  route('POST', '/api/platform/settings/test', { platform: true }, async (req, res) => {
+    const { provider } = await json<{ provider?: string }>(req);
+    send(res, 200, await testProvider(String(provider ?? '')));
+  });
+
+  // ---------- superadmin: cobros a cada empresa ----------
+  route('GET', '/api/platform/tenants/:id/charges', { platform: true }, async (_req, res, [id]) => send(res, 200, await listCharges(Number(id))));
+  route('POST', '/api/platform/tenants/:id/charges', { platform: true }, async (req, res, [id], ctx) => {
+    const c = await createCharge(Number(id), await json(req), ctx.user?.id ?? null, baseUrl(req));
+    await audit({ tenantId: Number(id), ...actorOf(ctx), action: 'billing.charge_created', target: `charge:${c.id}`, after: { provider: c.provider, amount: c.amount, currency: c.currency, description: c.description } });
+    send(res, 201, c);
+  });
+  route('POST', '/api/platform/tenants/:id/charges/:cid/refresh', { platform: true }, async (_req, res, [id, cid], ctx) => {
+    const before = (await listCharges(Number(id))).find((c) => c.id === Number(cid));
+    const c = await refreshCharge(Number(id), Number(cid));
+    if (before && before.status !== c.status) await audit({ tenantId: Number(id), ...actorOf(ctx), action: 'billing.charge_paid', target: `charge:${cid}`, before: { status: before.status }, after: { status: c.status } });
+    send(res, 200, c);
+  });
+  route('PUT', '/api/platform/tenants/:id/charges/:cid', { platform: true }, async (req, res, [id, cid], ctx) => {
+    const { status } = await json<{ status?: 'paid' | 'cancelled' | 'pending' }>(req);
+    const r = await setChargeStatus(Number(id), Number(cid), status!);
+    await audit({ tenantId: Number(id), ...actorOf(ctx), action: 'billing.charge_status', target: `charge:${cid}`, before: { status: r.before.status }, after: { status: r.after.status } });
     send(res, 200, r.after);
   });
 

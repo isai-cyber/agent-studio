@@ -9,6 +9,19 @@ import { search } from './knowledge.ts';
 import { actionTools, runAction, toolName } from './actions.ts';
 import { agentDir } from './store.ts';
 import { useClaudeCode, send as claudeCodeSend } from './claude-code.ts';
+import { tenantLanguage, LANGUAGES, type Language } from './tenancy/tenants.ts';
+
+// Idioma de respuesta: el del agente si lo tiene; si no, el de la empresa (lo elige el superadmin)
+export async function replyLanguage(agent: AgentDef): Promise<string> {
+  return agent.language ?? LANGUAGES[await tenantLanguage(tenantOf(agent))];
+}
+
+// Textos fijos que el motor dice a los usuarios finales
+const FIXED: Record<Language, { choose: string; failed: string }> = {
+  es: { choose: 'Elige una opción', failed: 'No pude completar la solicitud.' },
+  en: { choose: 'Please choose an option', failed: "I couldn't complete the request." },
+};
+const fixed = async (agent: AgentDef) => FIXED[(agent.language ?? '').toLowerCase().startsWith('en') ? 'en' : agent.language ? 'es' : await tenantLanguage(tenantOf(agent))];
 import { runTurn, timed, setRoute, type Channel } from './metrics.ts';
 import { bus } from './flows.ts';
 import { listTools as mcpListTools, callTool as mcpCallTool } from './mcp-client.ts';
@@ -167,7 +180,7 @@ async function generate(agent: AgentDef, session: Session, userText: string, ext
   const vars = Object.keys(session.variables).length ? `\n\n# Datos de la conversación\n${JSON.stringify(session.variables)}` : '';
   const system: ChatMessage = {
     role: 'system',
-    content: `${agent.instructions}${extraPrompt ? `\n\n# Tarea actual\n${render(extraPrompt, session.variables)}` : ''}${knowledge}${vars}\n\nResponde en ${agent.language ?? 'español'}. Sé conciso.`,
+    content: `${agent.instructions}${extraPrompt ? `\n\n# Tarea actual\n${render(extraPrompt, session.variables)}` : ''}${knowledge}${vars}\n\nResponde en ${await replyLanguage(agent)}. Sé conciso.`,
   };
   // Herramientas: acciones HTTP del agente + herramientas de sus servidores MCP
   const mcp = new Map<string, { server: NonNullable<AgentDef['mcpServers']>[number]; tool: string }>();
@@ -219,7 +232,7 @@ async function generate(agent: AgentDef, session: Session, userText: string, ext
       messages.push({ role: 'tool', tool_call_id: call.id, content: out });
     }
   }
-  return { text: 'No pude completar la solicitud.', sources: [] };
+  return { text: (await fixed(agent)).failed, sources: [] };
 }
 
 // ---------- ejecución de temas ----------
@@ -330,7 +343,7 @@ async function turn(agent: AgentDef, sessionId: string | undefined, userText: st
       const chosen = matchOption(options, text);
       if (!chosen) {
         setRoute('tema');
-        out.messages.push(`Elige una opción: ${options.join(', ')}`);
+        out.messages.push(`${(await fixed(agent)).choose}: ${options.join(', ')}`);
         out.options = options;
         session.history.push({ role: 'assistant', content: out.messages[0] });
         return out;

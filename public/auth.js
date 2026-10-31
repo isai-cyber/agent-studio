@@ -1,5 +1,7 @@
 // Inicio de sesión y registro (usuarios en MariaDB). Si el servidor no tiene base de
 // datos configurada, la app se abre sin login.
+import { setLanguage } from './i18n.js';
+
 const $ = (s, el = document) => el.querySelector(s);
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -22,6 +24,8 @@ function render(info, mode) {
   const el = $('#auth');
   const signup = mode === 'signup';
   const inv = info.invitation;
+  // Quien llega con una invitación ve el registro en el idioma de esa empresa
+  if (inv?.language) setLanguage(inv.language);
   el.innerHTML = `<div class="auth-card">
     <img class="auth-logo" src="/brand-logo.png" alt="Agent Studio" />
     <h1>${signup ? (info.firstUser ? 'Crea la cuenta de administrador' : 'Crea tu cuenta') : 'Bienvenido de nuevo'}</h1>

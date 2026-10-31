@@ -16,7 +16,7 @@ import { db } from './pool.ts';
 
 // Tablas con datos de una empresa. Toda tabla de negocio nueva debe añadirse
 // aquí y llevar `tenant_id ... NOT NULL` con índice.
-export const TENANT_TABLES = ['tenant_features', 'memberships', 'invitations', 'api_keys', 'audit_log', 'roles', 'role_permissions'] as const;
+export const TENANT_TABLES = ['tenant_features', 'memberships', 'invitations', 'api_keys', 'audit_log', 'roles', 'role_permissions', 'billing_charges'] as const;
 
 const fail = (status: number, message: string) => Object.assign(new Error(message), { status });
 

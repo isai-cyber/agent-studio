@@ -79,8 +79,12 @@ export async function invite(tenantId: number, input: { email?: string; roleId?:
   const r = await t.query('INSERT INTO invitations (tenant_id, email, role_id, token_hash, invited_by, expires_at) VALUES (:tenant, ?, ?, ?, ?, DATE_ADD(NOW(), INTERVAL ? DAY))', [email, role.id, sha(token), actor.userId, INVITE_DAYS]);
   const link = `${baseUrl}/?invite=${token}`;
   const tenant = await getTenant(tenantId);
+  const en = tenant?.language === 'en';
   const emailed = mailConfigured()
-    ? await sendMail(email, `Invitación a ${tenant?.name ?? 'Agent Studio'}`, `Te invitaron a unirte a ${tenant?.name} en Agent Studio con el rol ${role.name}.\n\nAcepta la invitación aquí (caduca en ${INVITE_DAYS} días):\n${link}\n`)
+    ? await sendMail(email,
+      en ? `Invitation to ${tenant?.name ?? 'Agent Studio'}` : `Invitación a ${tenant?.name ?? 'Agent Studio'}`,
+      en ? `You were invited to join ${tenant?.name} on Agent Studio.\n\nAccept the invitation here (expires in ${INVITE_DAYS} days):\n${link}\n`
+        : `Te invitaron a unirte a ${tenant?.name} en Agent Studio con el rol ${role.name}.\n\nAcepta la invitación aquí (caduca en ${INVITE_DAYS} días):\n${link}\n`)
     : false;
   const invitation = (await listInvitations(tenantId)).find((i) => i.id === r.insertId)!;
   return { invitation, link, emailed };
@@ -92,12 +96,12 @@ export async function revokeInvitation(tenantId: number, id: number): Promise<vo
 }
 
 // Datos públicos de una invitación (para la pantalla de registro)
-export async function invitationInfo(token: string): Promise<{ email: string; tenantName: string; roleName: string } | null> {
+export async function invitationInfo(token: string): Promise<{ email: string; tenantName: string; roleName: string; language: string } | null> {
   const inv = await findInvitationByHash(sha(String(token)));
   if (!inv || inv.accepted_at || new Date(inv.expires_at) < new Date()) return null;
   const tenant = await getTenant(inv.tenant_id);
   if (!tenant || tenant.status !== 'active') return null;
-  return { email: inv.email, tenantName: tenant.name, roleName: (await getRole(inv.tenant_id, inv.role_id)).name };
+  return { email: inv.email, tenantName: tenant.name, roleName: (await getRole(inv.tenant_id, inv.role_id)).name, language: tenant.language };
 }
 
 export async function acceptInvitation(token: string, user: { id: number; email: string }): Promise<{ tenantId: number; roleId: number }> {

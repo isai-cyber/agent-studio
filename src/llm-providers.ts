@@ -17,7 +17,6 @@ export interface ProviderDef {
   baseUrl: string;
   envKey: string; // variable con la API key del servidor
   envBaseUrl?: string; // variable para cambiar la URL
-  app?: string; // app de modules/apps con la que una empresa conecta su propia clave
   keyless?: boolean; // no pide clave (p. ej. Ollama local)
   defaultModel: string;
   models: Record<string, Price | null>;
@@ -32,7 +31,7 @@ export interface ProviderDef {
 //   cuenta como entrada normal (sin descuento).
 export const PROVIDERS: ProviderDef[] = [
   {
-    key: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com', envKey: 'DEEPSEEK_API_KEY', envBaseUrl: 'DEEPSEEK_BASE_URL', app: 'deepseek',
+    key: 'deepseek', name: 'DeepSeek', baseUrl: 'https://api.deepseek.com', envKey: 'DEEPSEEK_API_KEY', envBaseUrl: 'DEEPSEEK_BASE_URL',
     defaultModel: 'deepseek-flash', docs: 'https://api-docs.deepseek.com/quick_start/pricing',
     models: {
       'deepseek-flash': { input: 0.3, cacheHit: 0.006, output: 1.2 },
@@ -40,7 +39,7 @@ export const PROVIDERS: ProviderDef[] = [
     },
   },
   {
-    key: 'qwen', name: 'Qwen (Alibaba Cloud)', baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', envKey: 'QWEN_API_KEY', envBaseUrl: 'QWEN_BASE_URL', app: 'qwen',
+    key: 'qwen', name: 'Qwen (Alibaba Cloud)', baseUrl: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1', envKey: 'QWEN_API_KEY', envBaseUrl: 'QWEN_BASE_URL',
     defaultModel: 'qwen-flash', docs: 'https://www.alibabacloud.com/help/en/model-studio/model-pricing',
     models: {
       'qwen-flash': { input: 0.05, cacheHit: 0.05, output: 0.4 },

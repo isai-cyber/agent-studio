@@ -202,6 +202,32 @@ export const MIGRATIONS: Migration[] = [
       }
     },
   },
+  {
+    version: 5,
+    name: 'idioma y forma de cobro de cada empresa, y cobros de la plataforma',
+    async up(c) {
+      await c.query("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS language ENUM('es','en') NOT NULL DEFAULT 'es'");
+      await c.query("ALTER TABLE tenants ADD COLUMN IF NOT EXISTS billing_provider ENUM('stripe','mercadopago') NULL");
+      await c.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS billing_email VARCHAR(190) NULL');
+      // Cobros que la plataforma hace a cada empresa (enlace de pago de Stripe o Mercado Pago)
+      await c.query(`CREATE TABLE IF NOT EXISTS billing_charges (
+        id INT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+        tenant_id INT UNSIGNED NOT NULL,
+        provider ENUM('stripe','mercadopago') NOT NULL,
+        description VARCHAR(190) NOT NULL,
+        amount DECIMAL(12,2) NOT NULL,
+        currency CHAR(3) NOT NULL,
+        external_id VARCHAR(190) NULL,
+        url VARCHAR(1000) NULL,
+        status ENUM('pending','paid','cancelled') NOT NULL DEFAULT 'pending',
+        created_by INT UNSIGNED NULL,
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        paid_at TIMESTAMP NULL,
+        INDEX (tenant_id),
+        FOREIGN KEY (tenant_id) REFERENCES tenants(id) ON DELETE CASCADE
+      ) ${TABLE}`);
+    },
+  },
 ];
 
 export interface MigrationReport { applied: { version: number; name: string; warning?: string }[]; current: number }

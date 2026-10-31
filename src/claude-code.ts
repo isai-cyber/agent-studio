@@ -26,6 +26,8 @@ import { DEFAULT_TENANT_ID, resolveInside, tenantDataPath } from './tenancy/path
 import { actionTools, runAction, toolName } from './actions.ts';
 import { featureToolsFor, runFeatureTool } from './features/enforce.ts';
 import { addUsage } from './metrics.ts';
+import { tenantLanguage, LANGUAGES } from './tenancy/tenants.ts';
+import { getPlatformSettings } from './platform-settings.ts';
 
 const configured = (process.env.AGENT_BACKEND ?? 'direct').toLowerCase();
 if (configured === 'nanoclaw') console.warn('⚠ AGENT_BACKEND=nanoclaw ya no existe: se usa Claude Code (AGENT_BACKEND=claude-code).');
@@ -49,7 +51,7 @@ export function status() {
   return {
     model: MODEL,
     // Solo orientativo: Claude Code también puede usar su propio login o un proxy
-    apiKey: Boolean(process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || process.env.CLAUDE_CODE_OAUTH_TOKEN || process.env.ANTHROPIC_BASE_URL || process.env.CLAUDE_CODE_USE_BEDROCK || process.env.CLAUDE_CODE_USE_VERTEX || existsSync(join(homedir(), '.claude', '.credentials.json'))),
+    apiKey: Boolean(getPlatformSettings().llmKeys.anthropic || process.env.ANTHROPIC_API_KEY || process.env.ANTHROPIC_AUTH_TOKEN || process.env.CLAUDE_CODE_OAUTH_TOKEN || process.env.ANTHROPIC_BASE_URL || process.env.CLAUDE_CODE_USE_BEDROCK || process.env.CLAUDE_CODE_USE_VERTEX || existsSync(join(homedir(), '.claude', '.credentials.json'))),
     builtinTools: BUILTIN_TOOLS,
   };
 }
@@ -100,12 +102,13 @@ async function knowledgeMarkdown(agent: AgentDef): Promise<string> {
 }
 
 export async function buildClaudeMd(agent: AgentDef): Promise<string> {
+  const language = agent.language ?? LANGUAGES[await tenantLanguage(agent.tenantId!)];
   const sections = [
     `<!-- Generado por Agent Studio a partir de agents/${agent.tenantId}/${agent.id}/agent.yaml. Edítalo allí: se sobrescribe. -->`,
     `# ${agent.name}`,
     agent.description ? `> ${agent.description}` : '',
     `## Instrucciones\n\n${agent.instructions.trim()}`,
-    `Responde siempre en ${agent.language ?? 'español'}, de forma breve y clara.`,
+    `Responde siempre en ${language}, de forma breve y clara.`,
   ];
   if (agent.greeting) sections.push(`## Saludo\n\nAl empezar una conversación nueva, saluda con: "${agent.greeting}"`);
   if (agent.topics?.length) {
@@ -211,7 +214,8 @@ export async function send(agent: AgentDef, session: Session, text: string): Pro
     mcpServers: { [SERVER]: server, ...external },
     maxTurns: MAX_TURNS,
     abortController: abort,
-    env: { ...process.env, CLAUDE_AGENT_SDK_CLIENT_APP: 'agent-studio/0.1.0' },
+    // La clave de Anthropic la pone el superadmin (Ajustes) o el .env: es del servicio, no del cliente
+    env: { ...process.env, ...(getPlatformSettings().llmKeys.anthropic ? { ANTHROPIC_API_KEY: getPlatformSettings().llmKeys.anthropic } : {}), CLAUDE_AGENT_SDK_CLIENT_APP: 'agent-studio/0.1.0' },
   };
   let result: Extract<SDKMessage, { type: 'result' }> | undefined;
   try {

@@ -54,7 +54,7 @@ Para gastar menos:
 - **Un modelo por tarea.** `LLM_MODEL` responde en las conversaciones, `LLM_MODEL_CLASSIFY` elige el tema y clasifica textos (por defecto `auto`: el modelo con precio más barato que tenga clave) y `LLM_MODEL_FLOWS` atiende los flujos y el asistente. Cada agente puede fijar el suyo en el YAML: `model: qwen:qwen-plus`.
 - **Respaldo.** Si un proveedor falla (límite de uso, caída, clave rechazada), se prueba el siguiente de `LLM_FALLBACKS`. Un error de la propia petición (400) no se reintenta.
 - **Coste por modelo.** Cada llamada guarda tokens (también los de caché) y coste por `proveedor:modelo`, tanto en conversaciones como en flujos y en el asistente. En **Métricas**, la tabla «Coste por modelo» los compara.
-- **Claves por empresa.** Una empresa puede conectar su propia clave de **DeepSeek** o **Qwen** en **Apps** (se guarda cifrada). Sus agentes y flujos la usan antes que la del servidor; sin ella, usan la del `.env`.
+- **Tú das el servicio.** Las claves de IA son tuyas: las pones como superadmin en **Empresas y planes → Ajustes** (cifradas; mandan sobre el `.env`, que queda como alternativa) y las usan todas tus empresas. Tus clientes no ponen claves. Ahí mismo eliges el modelo de cada tarea y el respaldo, y pruebas cada clave.
 
 Precios de serie (USD por millón de tokens, consultados el 31/10/2026 en las páginas oficiales; revísalos, cambian a menudo):
 
@@ -68,6 +68,15 @@ Precios de serie (USD por millón de tokens, consultados el 31/10/2026 en las p�
 
 DeepSeek: tarifa de horas punta (fuera de punta, la mitad). Qwen: tramo de hasta 256K tokens de entrada, sin modo «thinking»; no publica el precio con caché, así que se cuenta sin descuento. Ajusta o añade precios con `LLM_PRICES`; un modelo sin precio cuenta 0 y no entra en la elección automática del más barato. Las variables `PRICE_*_PER_M` de antes siguen valiendo para DeepSeek y `DEEPSEEK_MODEL` para el modelo por defecto.
 
+## Idioma y cobro de cada cliente (superadmin)
+
+En **Empresas y planes → Empresas**, para cada cliente eliges:
+
+- **Idioma: español o inglés.** Cambia la interfaz para sus usuarios, el idioma en que responden sus agentes (los que no fijan `language` en su YAML) y el de sus correos de invitación. La traducción de la interfaz está en `public/i18n.js`; no se traducen el contenido que escribe cada empresa, las plantillas de agentes ni las descripciones de las apps del marketplace.
+- **Forma de cobro: Stripe o Mercado Pago.** Con **Cobros** creas un enlace de pago (Stripe Checkout o preferencia de Mercado Pago) por el importe que indiques, prellenado con el cobro estimado del mes (conversaciones × precio del plan). El Propietario de la empresa lo ve en **Configuración → Facturación** y paga ahí; con **Comprobar pago** se consulta al proveedor si ya se pagó, o lo marcas a mano.
+
+Las credenciales de Stripe (clave secreta) y Mercado Pago (access token), la moneda de cada uno y la página de vuelta tras pagar se ponen en **Empresas y planes → Ajustes**, cifradas. Son tus cuentas: tus clientes no configuran nada.
+
 ## Backend Claude Code
 
 Con `AGENT_BACKEND=claude-code` en `.env`, las respuestas libres de los agentes las da **Claude Code**, usado como librería con el [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) (`@anthropic-ai/claude-agent-sdk`). Agent Studio sigue siendo el editor y el chat de pruebas:
@@ -79,7 +88,7 @@ Con `AGENT_BACKEND=claude-code` en `.env`, las respuestas libres de los agentes 
 - Las **herramientas integradas** de Claude Code (Bash, Read, Write, Edit…) están **desactivadas**: el agente atiende a usuarios, no trabaja en el servidor. Con `CLAUDE_CODE_TOOLS=WebSearch,WebFetch` puedes permitir algunas, solo para la empresa Default.
 - El coste y los tokens que informa Claude Code se apuntan en las **Métricas** de cada turno.
 
-Requisitos: `ANTHROPIC_API_KEY` en `.env` (o un login de `claude`). Modelo: `CLAUDE_CODE_MODEL` (por defecto `claude-opus-5-5`); un agente con `model: claude-…` en su YAML usa ese. Ajustes opcionales: `CLAUDE_CODE_EFFORT`, `CLAUDE_CODE_MAX_TURNS` y `CLAUDE_CODE_TIMEOUT_MS`.
+Requisitos: la clave de Anthropic en **Empresas y planes → Ajustes** o `ANTHROPIC_API_KEY` en `.env` (o un login de `claude`). Modelo: `CLAUDE_CODE_MODEL` (por defecto `claude-opus-5-5`); un agente con `model: claude-…` en su YAML usa ese. Ajustes opcionales: `CLAUDE_CODE_EFFORT`, `CLAUDE_CODE_MAX_TURNS` y `CLAUDE_CODE_TIMEOUT_MS`.
 
 Sustituye al antiguo backend NanoClaw: `AGENT_BACKEND=nanoclaw` se trata como `claude-code` (con un aviso) y las variables `NANOCLAW_*` ya no se usan.
 
