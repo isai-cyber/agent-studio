@@ -2,7 +2,7 @@
 
 # Agent Studio
 
-Plataforma propia de agentes, alternativa a Copilot Studio: **DeepSeek** como modelo de lenguaje y **ElevenLabs** para la voz. Incluye automatizaciones estilo Zapier con un marketplace de 565 apps (APIs REST y servidores MCP), un asistente que monta flujos hablando, métricas de tokens y coste, API REST y servidor MCP, y usuarios con MariaDB.
+Plataforma propia de agentes, alternativa a Copilot Studio: modelos de lenguaje de **varios proveedores** (DeepSeek, Qwen, OpenRouter, Groq, Ollama…; o Claude Code) y **ElevenLabs** para la voz. Incluye automatizaciones estilo Zapier con un marketplace de 565 apps (APIs REST y servidores MCP), un asistente que monta flujos hablando, métricas de tokens y coste, API REST y servidor MCP, y usuarios con MariaDB.
 
 ## Capturas
 
@@ -18,7 +18,7 @@ Plataforma propia de agentes, alternativa a Copilot Studio: **DeepSeek** como mo
 ## Arranque
 
 ```bash
-cp .env.example .env   # pon DEEPSEEK_API_KEY, ELEVENLABS_API_KEY y los datos de MariaDB (DB_*)
+cp .env.example .env   # pon DEEPSEEK_API_KEY y/o QWEN_API_KEY, ELEVENLABS_API_KEY y los datos de MariaDB (DB_*)
 npm install
 npm run build:datasets # opcional: descarga los datasets y regenera el conocimiento de los agentes
 npm run migrate:tenancy # solo si vienes de una versión sin empresas: respalda y migra tus datos a la empresa Default
@@ -30,7 +30,7 @@ npm test               # pruebas (las de permisos y empresas usan MariaDB: ver t
 
 | Copilot Studio | Aquí |
 |---|---|
-| Modelo GPT | DeepSeek (`DEEPSEEK_BASE_URL` admite Ollama/vLLM para modelos locales) |
+| Modelo GPT | DeepSeek, Qwen, OpenRouter, Groq, Ollama o cualquier API compatible con OpenAI, con un modelo por tarea y respaldo (ver «Varios proveedores de LLM») |
 | Temas y disparadores | `topics` con pasos: `message`, `question`, `condition`, `set`, `action`, `generate`, `goto`, `end` |
 | Conocimiento | `knowledge` (texto, archivos, URLs) con búsqueda BM25 |
 | Acciones / Power Automate | `actions`: llamadas HTTP que el LLM usa como herramientas |
@@ -44,6 +44,29 @@ npm test               # pruebas (las de permisos y empresas usan MariaDB: ver t
 3. En la interfaz, ve a **Importar de Copilot Studio** y sube el .zip; o desde la terminal: `npm run import -- Solucion.zip`.
 
 Lo que no se puede traducir automáticamente (flujos de Power Automate, SharePoint, tarjetas adaptativas) sale en el informe como "Revisar" y se marca en el agente con `[IMPORT]`. El YAML original de cada componente se guarda en `agents/<empresa>/<id>/import/`. Por línea de comandos: `npm run import -- solucion.zip --tenant <id>` (sin `--tenant`, en la empresa Default).
+
+## Varios proveedores de LLM (ahorro de tokens)
+
+Agent Studio habla con cualquier proveedor con API compatible con OpenAI. Vienen preparados **DeepSeek**, **Qwen** (Alibaba Cloud Model Studio, endpoint internacional), **OpenRouter**, **Groq** y **Ollama** (local); otros se añaden con `LLM_PROVIDERS`. Un modelo se escribe `proveedor:modelo` (`qwen:qwen-flash`, `deepseek:deepseek-v4-pro`).
+
+Para gastar menos:
+
+- **Un modelo por tarea.** `LLM_MODEL` responde en las conversaciones, `LLM_MODEL_CLASSIFY` elige el tema y clasifica textos (por defecto `auto`: el modelo con precio más barato que tenga clave) y `LLM_MODEL_FLOWS` atiende los flujos y el asistente. Cada agente puede fijar el suyo en el YAML: `model: qwen:qwen-plus`.
+- **Respaldo.** Si un proveedor falla (límite de uso, caída, clave rechazada), se prueba el siguiente de `LLM_FALLBACKS`. Un error de la propia petición (400) no se reintenta.
+- **Coste por modelo.** Cada llamada guarda tokens (también los de caché) y coste por `proveedor:modelo`, tanto en conversaciones como en flujos y en el asistente. En **Métricas**, la tabla «Coste por modelo» los compara.
+- **Claves por empresa.** Una empresa puede conectar su propia clave de **DeepSeek** o **Qwen** en **Apps** (se guarda cifrada). Sus agentes y flujos la usan antes que la del servidor; sin ella, usan la del `.env`.
+
+Precios de serie (USD por millón de tokens, consultados el 31/10/2026 en las páginas oficiales; revísalos, cambian a menudo):
+
+| Modelo | Entrada | Entrada en caché | Salida |
+|---|---|---|---|
+| `deepseek:deepseek-flash` | 0,30 | 0,006 | 1,20 |
+| `deepseek:deepseek-v4-pro` | 1,32 | 0,044 | 3,96 |
+| `qwen:qwen-flash` | 0,05 | — | 0,40 |
+| `qwen:qwen-plus` | 0,40 | — | 1,20 |
+| `qwen:qwen-max` | 1,60 | — | 6,40 |
+
+DeepSeek: tarifa de horas punta (fuera de punta, la mitad). Qwen: tramo de hasta 256K tokens de entrada, sin modo «thinking»; no publica el precio con caché, así que se cuenta sin descuento. Ajusta o añade precios con `LLM_PRICES`; un modelo sin precio cuenta 0 y no entra en la elección automática del más barato. Las variables `PRICE_*_PER_M` de antes siguen valiendo para DeepSeek y `DEEPSEEK_MODEL` para el modelo por defecto.
 
 ## Backend Claude Code
 
@@ -97,7 +120,7 @@ En **Métricas** está la tarjeta **Agente en vivo**: la misma araña, pero guia
 - Ejecutar por API: `POST /v1/flows/<id>/run` con una clave que tenga `flows.manage`.
 - Historial: `data/tenants/<empresa>/flows/runs/<id>.jsonl`.
 
-**Módulos** integrados en `modules/`: básicos (filtro, espera, variables), HTTP, agentes, IA (DeepSeek y ElevenLabs), formato, mensajería (Telegram, Discord, Slack) y APIs públicas (clima, divisas, festivos). Los de la comunidad van en `modules-community/` y se instalan desde la pantalla Módulos pegando la URL de un archivo. Cómo crear uno: [MODULES.md](MODULES.md).
+**Módulos** integrados en `modules/`: básicos (filtro, espera, variables), HTTP, agentes, IA (texto con el modelo configurado y voz con ElevenLabs), formato, mensajería (Telegram, Discord, Slack) y APIs públicas (clima, divisas, festivos). Los de la comunidad van en `modules-community/` y se instalan desde la pantalla Módulos pegando la URL de un archivo. Cómo crear uno: [MODULES.md](MODULES.md).
 
 La forma de los módulos se inspira en las apps de [Automatisch](https://github.com/automatisch/automatisch), pero no incluye su código (AGPL-3.0): es una implementación propia.
 
@@ -153,7 +176,7 @@ Lo decide una sola función, `can(ctx, { feature, permission })` (`src/authz/can
 
 ## Asistente de automatización y onboarding
 
-En **Inicio**, escribe lo que quieres («Cuando llegue un pedido de Shopify avisa en Slack») y Agent Studio crea el flujo —y un agente si la petición lo describe— y te lleva al editor. El botón **✨ Asistente** abre un chat en cualquier pantalla para seguir ajustando hablando: «añade un correo», «quita el paso 3», «cámbialo a cada hora», «conecta https://…/mcp», «publícalo». Con `DEEPSEEK_API_KEY` el plan lo hace el modelo con el catálogo de módulos; sin ella se usan reglas propias. Rutas: `POST /api/assistant/plan` y `POST /api/assistant/chat`.
+En **Inicio**, escribe lo que quieres («Cuando llegue un pedido de Shopify avisa en Slack») y Agent Studio crea el flujo —y un agente si la petición lo describe— y te lleva al editor. El botón **✨ Asistente** abre un chat en cualquier pantalla para seguir ajustando hablando: «añade un correo», «quita el paso 3», «cámbialo a cada hora», «conecta https://…/mcp», «publícalo». Con algún proveedor de LLM configurado el plan lo hace el modelo con el catálogo de módulos; sin él se usan reglas propias. Rutas: `POST /api/assistant/plan` y `POST /api/assistant/chat`.
 
 ## Créditos de datos
 

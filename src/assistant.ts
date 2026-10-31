@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { listModules, getTrigger, getAction } from './modules/registry.ts';
 import { listFlows, getFlow, saveFlow, type Flow, type FlowStep } from './flows.ts';
 import { listAgents, saveAgent, uniqueId, slugify } from './store.ts';
-import { chat, llmConfigured } from './llm.ts';
+import { chat, llmAvailable } from './llm.ts';
 import { getConnection } from './connections.ts';
 import type { AgentDef } from './types.ts';
 import { tenantSlug } from './tenancy/tenants.ts';
@@ -200,8 +200,8 @@ const wantsAgent = (t: string) => /atiend|respond\w* (a|las|los|dudas|preguntas|
 
 // ---------- planificación con LLM (opcional) ----------
 
-async function llmPlan(text: string): Promise<{ trigger: Flow['trigger']; steps: FlowStep[]; name: string } | null> {
-  if (!llmConfigured()) return null;
+async function llmPlan(tenantId: number, text: string): Promise<{ trigger: Flow['trigger']; steps: FlowStep[]; name: string } | null> {
+  if (!(await llmAvailable(tenantId))) return null;
   // Las apps del catálogo (cientos) solo entran si se nombran; el resto de módulos, siempre
   const mentioned = new Set(catalogMentions(normName(text)).map((m) => m.mod.key));
   const catalog = listModules()
@@ -214,7 +214,7 @@ async function llmPlan(text: string): Promise<{ trigger: Flow['trigger']; steps:
         { role: 'system', content: 'Diseñas automatizaciones. Devuelve SOLO JSON: {"name": string, "trigger": {"module","key","args"}, "steps": [{"module","key","name","args"}]}. Usa únicamente módulos, disparadores y acciones del catálogo. En args puedes usar {{trigger.campo}} y {{steps.<id>.campo}}, donde <id> es "paso1", "paso2"... según el orden.' },
         { role: 'user', content: `Catálogo:\n${catalog}\n\nPetición: ${text}` },
       ],
-      { json: true, temperature: 0, step: 'planificar' },
+      { json: true, temperature: 0, step: 'planificar', tenantId, purpose: 'flow' },
     );
     const plan = JSON.parse(r.content ?? '{}');
     if (!plan.trigger || !getTrigger(plan.trigger.module, plan.trigger.key)) return null;
@@ -301,7 +301,7 @@ export async function planFromText(tenantId: number, text: string): Promise<Assi
   let agent: AgentDef | null = null;
   if (wantsAgent(t)) agent = await createAgentFor(tenantId, text);
 
-  const viaLlm = await llmPlan(text);
+  const viaLlm = await llmPlan(tenantId, text);
   let flow: Flow;
   if (viaLlm) {
     flow = await saveFlow(tenantId, withDefaults({ name: viaLlm.name, active: false, trigger: viaLlm.trigger, steps: viaLlm.steps }));

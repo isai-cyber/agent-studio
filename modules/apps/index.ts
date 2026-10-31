@@ -503,6 +503,26 @@ const APPS: HttpAppDef[] = [
       },
     }],
   },
+  // DeepSeek y Qwen: al conectarlos, los agentes y flujos de la empresa usan su propia clave
+  // (src/llm.ts); sin conexión se usa la del servidor, si la hay.
+  {
+    key: 'deepseek', name: 'DeepSeek', icon: '🐋', color: '#4D6BFE', category: 'IA', docs: 'https://api-docs.deepseek.com/',
+    description: 'Modelos DeepSeek (Flash y Pro). Al conectarlo, tus agentes y automatizaciones usan tu propia clave.',
+    auth: { fields: [secret('apiKey', 'API key (sk-…)')], apply: bearer('apiKey') },
+    actions: [{ key: 'chat', name: 'Generar texto', method: 'POST', url: 'https://api.deepseek.com/chat/completions',
+      args: [s('model', 'Modelo', { default: 'deepseek-flash' }), t('prompt', 'Instrucción', req), t('system', 'Rol (opcional)')],
+      body: (a) => ({ model: a.model || 'deepseek-flash', messages: [...(a.system ? [{ role: 'system', content: a.system }] : []), { role: 'user', content: a.prompt }] }),
+      pick: (d) => ({ text: d.choices?.[0]?.message?.content ?? '', model: d.model, usage: d.usage }) }],
+  },
+  {
+    key: 'qwen', name: 'Qwen (Alibaba Cloud)', icon: '🟣', color: '#615CED', category: 'IA', docs: 'https://www.alibabacloud.com/help/en/model-studio/',
+    description: 'Modelos Qwen de Alibaba Cloud Model Studio (Flash, Plus, Max). Al conectarlo, tus agentes y automatizaciones usan tu propia clave.',
+    auth: { fields: [secret('apiKey', 'API key de Model Studio (sk-…)', 'Clave del endpoint internacional (Singapur).')], apply: bearer('apiKey') },
+    actions: [{ key: 'chat', name: 'Generar texto', method: 'POST', url: 'https://dashscope-intl.aliyuncs.com/compatible-mode/v1/chat/completions',
+      args: [s('model', 'Modelo', { default: 'qwen-flash' }), t('prompt', 'Instrucción', req), t('system', 'Rol (opcional)')],
+      body: (a) => ({ model: a.model || 'qwen-flash', messages: [...(a.system ? [{ role: 'system', content: a.system }] : []), { role: 'user', content: a.prompt }] }),
+      pick: (d) => ({ text: d.choices?.[0]?.message?.content ?? '', model: d.model, usage: d.usage }) }],
+  },
   {
     key: 'llm-openai-compatible', name: 'LLM compatible OpenAI', icon: '🧠', color: '#10A37F', category: 'IA', docs: 'https://platform.openai.com/docs/api-reference/chat',
     description: 'Cualquier proveedor con API estilo OpenAI: OpenAI, OpenRouter, Groq, Mistral, Together u Ollama local.',

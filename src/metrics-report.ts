@@ -1,6 +1,8 @@
 // Agrega los eventos de métricas para el panel y genera datos de ejemplo.
-import type { MetricEvent, TurnEvent, TtsEvent } from './metrics.ts';
-import { PRICES, costOf } from './metrics.ts';
+import type { MetricEvent, TurnEvent, TtsEvent, LlmEvent, ModelUse } from './metrics.ts';
+import { PRICES } from './metrics.ts';
+import { parseModel, priceOf, costOf } from './llm-providers.ts';
+import { defaultModelSpec } from './llm.ts';
 import type { AgentDef } from './types.ts';
 
 export type Range = '24h' | '7d' | '30d';
@@ -14,7 +16,8 @@ const SCATTER_SLOTS = 3;
 export const STEP_LABELS: Record<string, string> = {
   clasificar: 'Clasificar tema',
   conocimiento: 'Buscar conocimiento',
-  llm: 'Modelo (DeepSeek)',
+  llm: 'Modelo de lenguaje',
+  modulo: 'Módulos de negocio',
   accion: 'Acciones / herramientas',
   mcp: 'Servidores MCP',
   'claude-code': 'Claude Code',
@@ -41,6 +44,18 @@ export function aggregate(all: MetricEvent[], agentsList: AgentDef[], range: Ran
   const inRange = all.filter((e) => Date.parse(e.ts) >= since);
   const turns = inRange.filter((e): e is TurnEvent => e.type === 'turn');
   const tts = inRange.filter((e): e is TtsEvent => e.type === 'tts');
+  const llmCalls = inRange.filter((e): e is LlmEvent => e.type === 'llm');
+
+  // --- coste y tokens por modelo ("proveedor:modelo"), conversaciones y flujos juntos
+  const perModel = new Map<string, ModelUse>();
+  for (const e of [...turns, ...llmCalls]) {
+    for (const [model, u] of Object.entries(e.models ?? {})) {
+      const m = perModel.get(model) ?? { calls: 0, input: 0, cacheHit: 0, output: 0, costUsd: 0 };
+      m.calls += u.calls; m.input += u.input; m.cacheHit += u.cacheHit; m.output += u.output; m.costUsd += u.costUsd;
+      perModel.set(model, m);
+    }
+  }
+  const byModel = [...perModel].map(([model, u]) => ({ model, ...u, costUsd: Math.round(u.costUsd * 1e6) / 1e6 })).sort((a, b) => b.costUsd - a.costUsd || b.calls - a.calls);
 
   // --- identidad y color de cada agente: estable (orden alfabético del id), nunca por ranking
   const names = new Map(agentsList.map((a) => [a.id, a.name]));
@@ -160,10 +175,11 @@ export function aggregate(all: MetricEvent[], agentsList: AgentDef[], range: Ran
     range,
     demo,
     generatedAt: new Date(now).toISOString(),
-    prices: PRICES,
+    defaultModel: defaultModelSpec(),
+    byModel,
     kpis: {
       tokens: turns.reduce((s, t) => s + totalTokens(t), 0),
-      costUsd: turns.reduce((s, t) => s + t.costUsd, 0) + tts.reduce((s, t) => s + t.costUsd, 0),
+      costUsd: turns.reduce((s, t) => s + t.costUsd, 0) + tts.reduce((s, t) => s + t.costUsd, 0) + llmCalls.reduce((s, t) => s + t.costUsd, 0),
       conversations: sessions.size,
       turns: turns.length,
       p50LatencyMs: Math.round(percentile(totals, 50)),
@@ -190,6 +206,8 @@ function rng(seed: number) {
 }
 
 export function makeDemo(agentIds: string[]): MetricEvent[] {
+  const demoModel = parseModel(defaultModelSpec());
+  const demoPrice = priceOf(demoModel);
   const r = rng(42);
   const between = (a: number, b: number) => Math.round(a + r() * (b - a));
   const pick = <T>(xs: T[]) => xs[Math.floor(r() * xs.length)];
@@ -211,7 +229,9 @@ export function makeDemo(agentIds: string[]): MetricEvent[] {
         if (ts > now) ts = now - between(60e3, 36e5);
         const push = (e: Omit<TurnEvent, 'type' | 'ts' | 'agentId' | 'sessionId' | 'channel' | 'costUsd'>) => {
           ts += between(15e3, 90e3);
-          events.push({ type: 'turn', ts: new Date(Math.min(ts, now)).toISOString(), agentId, sessionId, channel: pick(['ui', 'api', 'api', 'openai', 'mcp'] as const), costUsd: costOf(e.tokens.input, e.tokens.cacheHit, e.tokens.output), ...e });
+          const costUsd = costOf(demoPrice, e.tokens.input, e.tokens.cacheHit, e.tokens.output);
+          const models = e.tokens.input ? { [demoModel.ref]: { calls: 1, input: e.tokens.input, cacheHit: e.tokens.cacheHit, output: e.tokens.output, costUsd } } : undefined;
+          events.push({ type: 'turn', ts: new Date(Math.min(ts, now)).toISOString(), agentId, sessionId, channel: pick(['ui', 'api', 'api', 'openai', 'mcp'] as const), costUsd, ...(models ? { models } : {}), ...e });
         };
         push({ route: 'saludo', topic: 'Saludo', tokens: { input: 0, cacheHit: 0, output: 0, known: true }, latencyMs: { total: between(3, 15), steps: {} } });
         const kind = r();

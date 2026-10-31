@@ -134,8 +134,8 @@ function context(flow: Flow, vars: { trigger: unknown; steps: Record<string, unk
         return { sessionId: r.sessionId, reply: r.messages.join('\n\n'), options: r.options ?? [], topic: r.topic ?? null };
       },
       listAgents: async () => (await listAgents(tenantId)).map((a) => ({ id: a.id, name: a.name })),
-      llm: async (prompt, system, temperature) => {
-        const r = await chat([...(system ? [{ role: 'system' as const, content: system }] : []), { role: 'user', content: prompt }], { temperature });
+      llm: async (prompt, system, temperature, purpose = 'flow') => {
+        const r = await chat([...(system ? [{ role: 'system' as const, content: system }] : []), { role: 'user', content: prompt }], { temperature, tenantId, purpose });
         return r.content ?? '';
       },
       tts: async (text, voiceId) => {

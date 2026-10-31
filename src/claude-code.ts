@@ -25,7 +25,7 @@ import { agentDir } from './store.ts';
 import { DEFAULT_TENANT_ID, resolveInside, tenantDataPath } from './tenancy/paths.ts';
 import { actionTools, runAction, toolName } from './actions.ts';
 import { featureToolsFor, runFeatureTool } from './features/enforce.ts';
-import { addClaudeUsage } from './metrics.ts';
+import { addUsage } from './metrics.ts';
 
 const configured = (process.env.AGENT_BACKEND ?? 'direct').toLowerCase();
 if (configured === 'nanoclaw') console.warn('⚠ AGENT_BACKEND=nanoclaw ya no existe: se usa Claude Code (AGENT_BACKEND=claude-code).');
@@ -232,7 +232,7 @@ export async function send(agent: AgentDef, session: Session, text: string): Pro
     (a, u) => ({ input: a.input + u.inputTokens + u.cacheReadInputTokens + u.cacheCreationInputTokens, cacheHit: a.cacheHit + u.cacheReadInputTokens, output: a.output + u.outputTokens }),
     { input: 0, cacheHit: 0, output: 0 },
   );
-  addClaudeUsage({
+  addUsage(`claude-code:${options.model}`, {
     input: Math.max(0, totals.input - state.tokens.input),
     cacheHit: Math.max(0, totals.cacheHit - state.tokens.cacheHit),
     output: Math.max(0, totals.output - state.tokens.output),

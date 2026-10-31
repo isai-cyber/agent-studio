@@ -1,10 +1,10 @@
-// IA: texto con DeepSeek y voz con ElevenLabs (usa las claves del .env del servidor).
+// IA: texto con el LLM configurado (DeepSeek, Qwen… ver src/llm.ts) y voz con ElevenLabs.
 import type { ModuleDef } from '../../src/modules/sdk.ts';
 
 export default {
   key: 'ia',
-  name: 'IA (DeepSeek y ElevenLabs)',
-  description: 'Genera, resume o clasifica texto con DeepSeek y convierte texto en voz con ElevenLabs.',
+  name: 'IA (texto y voz)',
+  description: 'Genera, resume o clasifica texto con el modelo configurado (DeepSeek, Qwen…) y convierte texto en voz con ElevenLabs.',
   icon: '✨',
   color: '#f59e0b',
   category: 'IA',
@@ -30,7 +30,7 @@ export default {
       ],
       async run(ctx) {
         const cats = String(ctx.args.categories).split(',').map((c) => c.trim()).filter(Boolean);
-        const out = (await ctx.agentStudio.llm(`Clasifica el texto en UNA de estas categorías: ${cats.join(', ')}. Responde solo con la categoría.\n\nTexto: ${ctx.args.text}`, undefined, 0)).trim().toLowerCase();
+        const out = (await ctx.agentStudio.llm(`Clasifica el texto en UNA de estas categorías: ${cats.join(', ')}. Responde solo con la categoría.\n\nTexto: ${ctx.args.text}`, undefined, 0, 'classify')).trim().toLowerCase();
         return { category: cats.find((c) => out.includes(c.toLowerCase())) ?? out };
       },
     },

@@ -10,12 +10,9 @@ const dir = (tenantId: number) => tenantDataPath(tenantId, 'metrics');
 const eventsFile = (tenantId: number) => tenantDataPath(tenantId, 'metrics', 'events.jsonl');
 const demoFile = (tenantId: number) => tenantDataPath(tenantId, 'metrics', 'demo.jsonl');
 
-// Precios en USD por millón de tokens. Configurables porque cambian con el tiempo:
-// revisa la página de precios de tu proveedor y ajústalos en .env.
+// Los precios de los modelos van por proveedor y modelo en src/llm-providers.ts.
+// Aquí quedan la voz y el presupuesto mensual.
 export const PRICES = {
-  input: Number(process.env.PRICE_INPUT_PER_M ?? 0.28),
-  cacheHit: Number(process.env.PRICE_CACHE_HIT_PER_M ?? 0.028),
-  output: Number(process.env.PRICE_OUTPUT_PER_M ?? 0.42),
   ttsPer1kChars: Number(process.env.PRICE_TTS_PER_1K_CHARS ?? 0),
   monthlyBudget: Number(process.env.MONTHLY_BUDGET_USD ?? 20),
 };
@@ -34,8 +31,23 @@ export interface TurnEvent {
   topic?: string;
   tokens: { input: number; cacheHit: number; output: number; known: boolean };
   costUsd: number;
+  // Desglose por modelo ("proveedor:modelo"): cuántas llamadas, tokens y coste
+  models?: Record<string, ModelUse>;
   latencyMs: { total: number; steps: Record<string, number> };
   error?: string;
+  demo?: boolean;
+}
+
+export interface ModelUse { calls: number; input: number; cacheHit: number; output: number; costUsd: number }
+
+// Llamadas al LLM fuera de una conversación (flujos, asistente de automatización)
+export interface LlmEvent {
+  type: 'llm';
+  ts: string;
+  purpose: string;
+  tokens: { input: number; cacheHit: number; output: number; known: boolean };
+  costUsd: number;
+  models: Record<string, ModelUse>;
   demo?: boolean;
 }
 
@@ -49,26 +61,20 @@ export interface TtsEvent {
   demo?: boolean;
 }
 
-export type MetricEvent = TurnEvent | TtsEvent;
+export type MetricEvent = TurnEvent | TtsEvent | LlmEvent;
 
 interface TurnCtx {
   input: number;
   cacheHit: number;
   output: number;
   llmCalls: number;
-  // Coste que informa Claude Code (ya calculado con sus precios) y sus tokens,
-  // que no se vuelven a cobrar con los precios de DeepSeek
-  reportedCostUsd: number;
-  reported: { input: number; cacheHit: number; output: number };
+  costUsd: number;
+  models: Record<string, ModelUse>;
   steps: Record<string, number>;
   route?: Route;
 }
 
 const als = new AsyncLocalStorage<TurnCtx>();
-
-export function costOf(input: number, cacheHit: number, output: number): number {
-  return ((input - cacheHit) * PRICES.input + cacheHit * PRICES.cacheHit + output * PRICES.output) / 1_000_000;
-}
 
 // Mide un paso del turno en curso (no hace nada fuera de un turno)
 export async function timed<T>(step: string, fn: () => Promise<T>): Promise<T> {
@@ -81,23 +87,35 @@ export async function timed<T>(step: string, fn: () => Promise<T>): Promise<T> {
   }
 }
 
-export function addUsage(u: { prompt_tokens?: number; completion_tokens?: number; prompt_cache_hit_tokens?: number } | undefined): void {
-  const ctx = als.getStore();
-  if (!ctx || !u) return;
-  ctx.input += u.prompt_tokens ?? 0;
-  ctx.cacheHit += u.prompt_cache_hit_tokens ?? 0;
-  ctx.output += u.completion_tokens ?? 0;
-  ctx.llmCalls++;
+export interface Usage { input: number; cacheHit: number; output: number; costUsd: number }
+
+function addTo(models: Record<string, ModelUse>, model: string, u: Usage): void {
+  const m = (models[model] ??= { calls: 0, input: 0, cacheHit: 0, output: 0, costUsd: 0 });
+  m.calls++;
+  m.input += u.input;
+  m.cacheHit += u.cacheHit;
+  m.output += u.output;
+  m.costUsd += u.costUsd;
 }
 
-export function addClaudeUsage(u: { input: number; cacheHit: number; output: number; costUsd: number }): void {
+// Apunta una llamada al LLM. Dentro de una conversación suma al turno; fuera
+// (flujos, asistente) se guarda como evento 'llm' de la empresa si se indica.
+export function addUsage(model: string, u: Usage, outside?: { tenantId: number; purpose: string }): void {
   const ctx = als.getStore();
-  if (!ctx) return;
-  ctx.reported.input += u.input;
-  ctx.reported.cacheHit += u.cacheHit;
-  ctx.reported.output += u.output;
-  ctx.reportedCostUsd += u.costUsd;
-  ctx.llmCalls++;
+  if (ctx) {
+    ctx.input += u.input;
+    ctx.cacheHit += u.cacheHit;
+    ctx.output += u.output;
+    ctx.costUsd += u.costUsd;
+    ctx.llmCalls++;
+    addTo(ctx.models, model, u);
+    return;
+  }
+  if (!outside) return;
+  const models: Record<string, ModelUse> = {};
+  addTo(models, model, u);
+  append(outside.tenantId, { type: 'llm', ts: new Date().toISOString(), purpose: outside.purpose, tokens: { input: u.input, cacheHit: u.cacheHit, output: u.output, known: true }, costUsd: u.costUsd, models })
+    .catch((e) => console.warn('[metrics]', e.message));
 }
 
 export function setRoute(route: Route): void {
@@ -115,7 +133,7 @@ export async function runTurn<T extends { sessionId: string; topic?: string }>(
   meta: { tenantId: number; agentId: string; channel: Channel },
   fn: () => Promise<T>,
 ): Promise<T> {
-  const ctx: TurnCtx = { input: 0, cacheHit: 0, output: 0, llmCalls: 0, reportedCostUsd: 0, reported: { input: 0, cacheHit: 0, output: 0 }, steps: {} };
+  const ctx: TurnCtx = { input: 0, cacheHit: 0, output: 0, llmCalls: 0, costUsd: 0, models: {}, steps: {} };
   const start = performance.now();
   let result: T | undefined;
   let error: string | undefined;
@@ -135,8 +153,9 @@ export async function runTurn<T extends { sessionId: string; topic?: string }>(
       channel: meta.channel,
       route: ctx.route ?? 'tema',
       ...(result?.topic ? { topic: result.topic } : {}),
-      tokens: { input: ctx.input + ctx.reported.input, cacheHit: ctx.cacheHit + ctx.reported.cacheHit, output: ctx.output + ctx.reported.output, known: true },
-      costUsd: costOf(ctx.input, ctx.cacheHit, ctx.output) + ctx.reportedCostUsd,
+      tokens: { input: ctx.input, cacheHit: ctx.cacheHit, output: ctx.output, known: true },
+      costUsd: ctx.costUsd,
+      ...(Object.keys(ctx.models).length ? { models: ctx.models } : {}),
       latencyMs: { total: Math.round(performance.now() - start), steps },
       ...(error ? { error } : {}),
     };
@@ -196,7 +215,7 @@ export async function usageSince(tenantId: number, since: Date): Promise<{ conve
     if (e.ts < from) continue;
     costUsd += e.costUsd ?? 0;
     if (e.type === 'turn') { turns++; if (e.sessionId && e.sessionId !== 'error') sessions.add(e.sessionId); }
-    else ttsChars += e.chars ?? 0;
+    else if (e.type === 'tts') ttsChars += e.chars ?? 0;
   }
   return { conversations: sessions.size, turns, costUsd: Math.round(costUsd * 10000) / 10000, ttsChars };
 }

@@ -383,7 +383,7 @@ function kpis() {
   const k = data.kpis;
   const tiles = [
     ['Tokens', fmtCompact.format(k.tokens), k.unknownTokenTurns ? `${fmtInt.format(k.unknownTokenTurns)} mensajes sin cifra de tokens (NanoClaw, antiguo)` : `${fmtInt.format(k.turns)} mensajes`],
-    ['Coste', usd(k.costUsd), `Precios: $${data.prices.input}/M entrada · $${data.prices.output}/M salida`],
+    ['Coste', usd(k.costUsd), `Modelo por defecto: ${data.defaultModel}`],
     ['Conversaciones', fmtInt.format(k.conversations), k.conversations ? `${(k.turns / k.conversations).toFixed(1)} mensajes de media` : '—'],
     ['Latencia', ms(k.p50LatencyMs), `p95 ${ms(k.p95LatencyMs)}${k.errors ? ` · ${k.errors} errores` : ''}`],
   ];
@@ -409,11 +409,24 @@ function banner(api) {
 
 const CHARTS = { tokens: chartTokens, cost: chartCost, ranking: chartRanking, latency: chartLatency, outcome: chartOutcome };
 
+// Coste por modelo ("proveedor:modelo"): conversaciones, flujos y asistente juntos
+function modelsTable() {
+  const el = $('#m-models');
+  if (!el) return;
+  const rows = data.byModel ?? [];
+  el.innerHTML = rows.length
+    ? `<table><thead><tr><th>Modelo</th><th>Llamadas</th><th>Tokens de entrada</th><th>De caché</th><th>Tokens de salida</th><th>Coste</th><th>Coste por llamada</th></tr></thead><tbody>
+      ${rows.map((m) => `<tr><td>${esc(m.model)}</td><td>${fmtInt.format(m.calls)}</td><td>${fmtCompact.format(m.input)}</td><td>${m.input ? Math.round((m.cacheHit / m.input) * 100) : 0}%</td><td>${fmtCompact.format(m.output)}</td><td>${usd(m.costUsd)}</td><td>${usd(m.calls ? m.costUsd / m.calls : 0)}</td></tr>`).join('')}
+    </tbody></table>`
+    : '<p class="muted">Todavía no hay llamadas a modelos en este periodo.</p>';
+}
+
 function renderAll() {
   if (!data) return;
   kpis();
   for (const [key, fn] of Object.entries(CHARTS)) fn($(`[data-chart="${key}"]`));
-  $('#m-foot').textContent = `Actualizado ${hourFmt.format(new Date(data.generatedAt))}. Coste estimado con los precios configurados en .env (PRICE_INPUT_PER_M, PRICE_OUTPUT_PER_M, MONTHLY_BUDGET_USD).`;
+  modelsTable();
+  $('#m-foot').textContent = `Actualizado ${hourFmt.format(new Date(data.generatedAt))}. Coste estimado con los precios de cada modelo (src/llm-providers.ts, ajustables con LLM_PRICES) y el presupuesto MONTHLY_BUDGET_USD.`;
 }
 
 // La araña de "Agente en vivo" recibe los mismos datos del panel

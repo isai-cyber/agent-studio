@@ -14,7 +14,7 @@ import { ROOT, listAgents, getAgent, saveAgent, saveAgentYaml, deleteAgent, uniq
 import { handleTurn, resetSession } from './engine.ts';
 import { useClaudeCode, BACKEND, status as claudeCodeStatus, syncAgent } from './claude-code.ts';
 import { textToSpeech, speechToText, listVoices, voiceConfigured } from './voice.ts';
-import { llmConfigured, DEFAULT_MODEL } from './llm.ts';
+import { llmConfigured, DEFAULT_MODEL, llmStatus } from './llm.ts';
 import { importPath, importTopicYaml } from './importer.ts';
 import type { AgentDef } from './types.ts';
 import { handlePublic } from './public-api.ts';
@@ -69,6 +69,7 @@ route('GET', '/api/status', { noTenant: true }, async (_req, res) => {
     backend: BACKEND,
     llm: llmConfigured(),
     model: DEFAULT_MODEL,
+    llmRoutes: llmStatus(),
     voice: voiceConfigured(),
     ...(useClaudeCode() ? { claudeCode: claudeCodeStatus() } : {}),
   });
@@ -415,7 +416,8 @@ export async function startServer(port = PORT): Promise<Server> {
     const st = claudeCodeStatus();
     console.log(`Backend: Claude Code (${st.model}${st.builtinTools.length ? ` · herramientas: ${st.builtinTools.join(', ')}` : ''})`);
     if (!st.apiKey) console.log('⚠ No se detectan credenciales para Claude Code: define ANTHROPIC_API_KEY (o inicia sesión con claude)');
-  } else if (!llmConfigured()) console.log('⚠ Falta DEEPSEEK_API_KEY (copia .env.example a .env)');
+  } else if (!llmConfigured()) console.log('⚠ No hay ningún modelo configurado: define DEEPSEEK_API_KEY, QWEN_API_KEY u otro proveedor (copia .env.example a .env)');
+  else { const st = llmStatus(); console.log(`LLM: ${st.default} · clasificar: ${st.classify}${st.fallbacks.length ? ` · respaldo: ${st.fallbacks.join(', ')}` : ''}`); }
   if (!voiceConfigured()) console.log('⚠ Falta ELEVENLABS_API_KEY: la voz estará desactivada');
   return server;
 }

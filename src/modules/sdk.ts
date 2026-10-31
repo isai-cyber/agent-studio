@@ -42,7 +42,8 @@ export interface StepContext {
   agentStudio: {
     chat: (agentId: string, message: string, sessionId?: string) => Promise<{ sessionId: string; reply: string; options: string[]; topic: string | null }>;
     listAgents: () => Promise<{ id: string; name: string }[]>;
-    llm: (prompt: string, system?: string, temperature?: number) => Promise<string>;
+    // purpose 'classify' usa el modelo barato de clasificación (LLM_MODEL_CLASSIFY)
+    llm: (prompt: string, system?: string, temperature?: number, purpose?: 'flow' | 'classify') => Promise<string>;
     tts: (text: string, voiceId?: string) => Promise<{ url: string; bytes: number }>;
   };
   stop: (reason?: string) => { __stop: true; reason: string };

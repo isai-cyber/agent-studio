@@ -116,7 +116,7 @@ async function loadStatus() {
   const brain =
     status.backend === 'claude-code'
       ? `Backend: Claude Code ${cc?.apiKey ? '✅' : '⚠️ sin credenciales detectadas'}<br>Modelo: ${esc(cc?.model)}`
-      : `Backend: directo<br>LLM: ${status.llm ? '✅' : '❌'} ${esc(status.model)}`;
+      : `Backend: directo<br>LLM: ${status.llm ? '✅' : '❌'} ${esc(status.model)}${status.llmRoutes ? `<br>Clasificar: ${esc(status.llmRoutes.classify)}<br>Proveedores: ${status.llmRoutes.providers.filter((p) => p.configured).map((p) => esc(p.name)).join(', ') || 'ninguno en .env'}` : ''}`;
   $('#status').innerHTML = `${brain}<br>Voz ElevenLabs: ${status.voice ? '✅' : '❌'}`;
   $('#sync-claude-code').hidden = status.backend !== 'claude-code';
   const ok = status.backend === 'claude-code' ? cc?.apiKey : status.llm;

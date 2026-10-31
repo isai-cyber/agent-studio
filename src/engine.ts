@@ -4,7 +4,7 @@
 //  2. Si no, respuesta generativa con instrucciones + conocimiento + acciones (tools).
 import { randomUUID } from 'node:crypto';
 import type { AgentDef, ChatMessage, Session, Step, Topic } from './types.ts';
-import { chat, llmConfigured } from './llm.ts';
+import { chat, llmAvailable } from './llm.ts';
 import { search } from './knowledge.ts';
 import { actionTools, runAction, toolName } from './actions.ts';
 import { agentDir } from './store.ts';
@@ -112,8 +112,8 @@ function matchByTrigger(topics: Topic[], text: string): Topic | undefined {
 }
 
 async function matchByLlm(agent: AgentDef, topics: Topic[], text: string, history: ChatMessage[]): Promise<Topic | undefined> {
-  // Sin clave directa de DeepSeek (p. ej. todo pasa por Claude Code) solo se usan las frases disparadoras
-  if (!topics.length || !llmConfigured()) return undefined;
+  // Sin ningún proveedor con clave (p. ej. todo pasa por Claude Code) solo se usan las frases disparadoras
+  if (!topics.length || !(await llmAvailable(tenantOf(agent)))) return undefined;
   const list = topics
     .map((t, i) => `${i + 1}. ${t.name}: ${t.description ?? ''} Ejemplos: ${(t.triggers ?? []).slice(0, 6).join(' | ')}`)
     .join('\n');
@@ -127,7 +127,8 @@ async function matchByLlm(agent: AgentDef, topics: Topic[], text: string, histor
       },
       { role: 'user', content: `Temas:\n${list}\n\nConversación reciente:\n${recent}\n\nÚltimo mensaje: ${text}` },
     ],
-    { model: agent.model, temperature: 0, json: true, step: 'clasificar' },
+    // Clasificar es la tarea más repetida y sencilla: va por la ruta barata (LLM_MODEL_CLASSIFY)
+    { temperature: 0, json: true, step: 'clasificar', tenantId: tenantOf(agent), purpose: 'classify' },
   );
   try {
     const n = Number(JSON.parse(res.content ?? '{}').topic);
@@ -189,7 +190,7 @@ async function generate(agent: AgentDef, session: Session, userText: string, ext
   const messages: ChatMessage[] = [system, ...session.history.slice(-MAX_HISTORY)];
 
   for (let i = 0; i < 5; i++) {
-    const res = await chat(messages, { model: agent.model, temperature: agent.temperature, tools });
+    const res = await chat(messages, { model: agent.model, temperature: agent.temperature, tools, tenantId: tenantOf(agent), purpose: 'answer' });
     if (!res.tool_calls?.length) {
       return { text: res.content ?? '', sources: [...new Set(hits.map((h) => h.source))] };
     }
