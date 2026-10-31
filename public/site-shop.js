@@ -24,7 +24,7 @@
 .as-panel{position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,.45);display:flex;justify-content:flex-end}
 .as-panel>div{background:#fff;color:#111;width:min(420px,100%);height:100%;overflow:auto;padding:20px;box-sizing:border-box;font-family:system-ui,sans-serif}
 .as-panel h2{margin:0 0 12px}.as-row{display:flex;gap:8px;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid #eee}
-.as-row input{width:56px}.as-panel label{display:block;margin:10px 0 4px}.as-panel input[type=text],.as-panel input[type=email]{width:100%;padding:8px;box-sizing:border-box}
+.as-row span{flex:1}.as-row input{width:56px;padding:4px}.as-row button{background:none;border:1px solid #ddd;border-radius:6px;padding:4px 8px;cursor:pointer;font:inherit;font-size:13px}.as-panel label{display:block;margin:10px 0 4px}.as-panel input[type=text],.as-panel input[type=email]{width:100%;padding:8px;box-sizing:border-box}
 .as-panel .as-pay{width:100%;margin-top:14px}.as-panel .as-x{background:none;border:0;font-size:22px;float:right;cursor:pointer}
 .as-err{color:#b91c1c}.as-toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#111;color:#fff;padding:8px 14px;border-radius:8px;z-index:10000}`;
   document.head.appendChild(css);

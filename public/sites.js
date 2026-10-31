@@ -191,7 +191,7 @@ async function renderPayments(body, retryStripe = false) {
         <button class="primary" data-connect="${key}">${by[key].ready ? 'Revisar cuenta' : by[key].connected ? 'Continuar alta' : `Conectar ${name}`}</button>
         ${key === 'stripe' && by[key].connected ? '<button class="ghost" id="stripe-check">Comprobar estado</button>' : ''}
         ${by[key].connected ? `<button class="ghost danger" data-disconnect="${key}">Desconectar</button>` : ''}
-        <label class="switch" style="margin-left:auto"><input type="radio" name="prov" value="${key}" ${data.site.paymentProvider === key ? 'checked' : ''} ${by[key].ready ? '' : 'disabled'} /><span></span>Cobrar con ${name}</label></div>`}
+        <label class="switch" style="margin-left:auto"><input type="radio" name="prov" value="${key}" ${data.provider === key ? 'checked' : ''} ${by[key].ready ? '' : 'disabled'} /><span></span>Cobrar con ${name}</label></div>`}
     </div>`;
   body.innerHTML = `
     <p class="muted">Las ventas de tu web se cobran directamente en <b>tu</b> cuenta. ${platform.feePercent ? `La plataforma retiene una comisión del ${platform.feePercent}% por venta.` : ''} No tienes que copiar ninguna clave: pulsa «Conectar» y sigue los pasos.</p>
