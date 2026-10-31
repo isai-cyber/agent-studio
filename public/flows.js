@@ -8,6 +8,7 @@ const uid = () => Math.random().toString(36).slice(2, 8);
 
 let api, post;
 let modules = [];
+let tenantSlug = 'default'; // los webhooks van en /hooks/<empresa>/<id>
 let agents = [];
 let connections = {}; // app → campos guardados (enmascarados)
 let flow = null;
@@ -98,7 +99,7 @@ export async function loadFlowsView() {
           const r = runs[i];
           return `<div class="card flow-card" data-id="${esc(f.id)}">
             <div class="flow-card-head"><span class="flow-steps">${[f.trigger, ...f.steps].filter(Boolean).map((s) => `<span>${logo(modByKey(s.module))}</span>`).join('<i>›</i>')}</span>
-              <span class="pill-state ${f.active ? 'on' : ''}">${f.active ? 'Publicado' : 'Borrador'}</span></div>
+              <span class="pill-state ${f.paused ? 'paused' : f.active ? 'on' : ''}" ${f.paused ? `title="${esc(f.paused.reason)}"` : ''}>${f.paused ? '⏸ En pausa' : f.active ? 'Publicado' : 'Borrador'}</span></div>
             <div class="name">${esc(f.name)}</div>
             <div class="muted small">${r ? `Última ejecución: ${STATUS[r.status] ?? ''} ${esc(r.status)} · ${new Date(r.ts).toLocaleString('es')}` : 'Sin ejecuciones todavía'}</div>
           </div>`;
@@ -176,8 +177,9 @@ function renderTop() {
   const pub = $('#flow-publish');
   pub.textContent = flow.active ? 'PAUSAR' : 'PUBLICAR';
   pub.classList.toggle('primary', !flow.active);
-  $('#flow-state').textContent = flow.active ? '● Publicado' : 'Borrador';
-  $('#flow-state').className = `flow-state ${flow.active ? 'on' : ''}`;
+  $('#flow-state').textContent = flow.paused ? '⏸ En pausa' : flow.active ? '● Publicado' : 'Borrador';
+  $('#flow-state').className = `flow-state ${flow.paused ? 'paused' : flow.active ? 'on' : ''}`;
+  $('#flow-state').title = flow.paused ? `${flow.paused.reason} Se reanudará solo al reactivar el módulo.` : '';
   $('#run-bar').innerHTML = lastRun ? `Última prueba: <b class="s-${esc(lastRun.status)}">${STATUS[lastRun.status] ?? ''} ${esc(lastRun.status)}</b> · ${lastRun.ms} ms` : '';
 }
 
@@ -274,7 +276,7 @@ function connectionHtml(c) {
       ${ok ? '<button class="ghost" data-conn-del="1">Desconectar</button>' : ''}
       ${m.homepage ? `<a class="muted small" href="${esc(m.homepage)}" target="_blank" rel="noopener">¿Dónde consigo estos datos? ↗</a>` : ''}
     </div>
-    <p class="muted small">Se guardan en tu servidor, en <code>data/connections.json</code> (solo tu usuario puede leer el archivo), y nunca se muestran completos.</p>`;
+    <p class="muted small">Se guardan cifradas (AES-256-GCM) con la clave de tu empresa y nunca se muestran completas.</p>`;
 }
 
 function appPickerHtml(c) {
@@ -362,7 +364,7 @@ function setupHtml(c) {
   const def = eventDef(c);
   const args = def.arguments ?? [];
   const hook = c.kind === 'trigger' && def.type === 'webhook'
-    ? `<div class="zfield"><span class="zlabel">URL para recibir datos</span><div class="copy-row"><code id="hook-url">${esc(`${location.origin}/hooks/${flow.id ?? '…'}${c.args?.secret ? `?token=${encodeURIComponent(c.args.secret)}` : ''}`)}</code><button id="copy-hook">Copiar</button></div><small class="zhelp">Envía aquí un POST con JSON. Funciona cuando el flujo está publicado.</small></div>` : '';
+    ? `<div class="zfield"><span class="zlabel">URL para recibir datos</span><div class="copy-row"><code id="hook-url">${esc(`${location.origin}/hooks/${tenantSlug}/${flow.id ?? '…'}${c.args?.secret ? `?token=${encodeURIComponent(c.args.secret)}` : ''}`)}</code><button id="copy-hook">Copiar</button></div><small class="zhelp">Envía aquí un POST con JSON. Funciona cuando el flujo está publicado.</small></div>` : '';
   const test = c.kind === 'trigger' && ['webhook', 'manual', 'event'].includes(def.type)
     ? `<div class="zfield"><label class="zlabel" for="test-payload">Datos de ejemplo para probar</label><textarea id="test-payload" rows="5">${esc(JSON.stringify(flow.testPayload ?? {}, null, 2))}</textarea><small class="zhelp">Simulan lo que llegará de verdad. Se usan al pulsar "Probar".</small></div>` : '';
   const name = c.kind === 'action' ? `<div class="zfield"><label class="zlabel" for="step-name">Nombre del paso</label><div class="zinput"><input id="step-name" value="${esc(c.name ?? '')}" /></div></div>` : '';
@@ -468,7 +470,7 @@ function bindEditor() {
       box.querySelector('.var-preview')?.remove();
       const pv = previewHtml(el.value);
       if (pv) box.querySelector('.zinput').insertAdjacentHTML('afterend', pv);
-      if (el.dataset.arg === 'secret' && $('#hook-url')) $('#hook-url').textContent = `${location.origin}/hooks/${flow.id ?? '…'}${el.value ? `?token=${encodeURIComponent(el.value)}` : ''}`;
+      if (el.dataset.arg === 'secret' && $('#hook-url')) $('#hook-url').textContent = `${location.origin}/hooks/${tenantSlug}/${flow.id ?? '…'}${el.value ? `?token=${encodeURIComponent(el.value)}` : ''}`;
     };
     // Recordar dónde estaba el cursor para insertar ahí los datos
     const remember = () => { if (typeof el.selectionStart === 'number') caret = { key: el.dataset.arg, pos: el.selectionStart }; };
@@ -582,7 +584,7 @@ function mkCard(m) {
   const n = m.actions.length + m.triggers.length;
   return `<button class="mk-card" data-mk="${esc(m.key)}" data-kind="${kindOf(m)}" data-cat="${esc(m.category)}" data-search="${esc(`${m.name} ${m.description} ${m.category} ${m.key}`.toLowerCase())}">
     <div class="mk-card-top"><span class="mk-logo">${logo(m)}</span>
-      <div class="mk-card-titles"><b>${esc(m.name)}</b><small>${esc(m.author || 'Agent Studio')} · ${esc(KIND_LABEL[kindOf(m)])}</small></div>
+      <div class="mk-card-titles"><b>${esc(m.name)}</b><small>${esc(m.author || 'CrawStudio A.I')} · ${esc(KIND_LABEL[kindOf(m)])}</small></div>
       ${connections[m.key] ? '<span class="mk-conn" title="Conectado">✓</span>' : ''}</div>
     <p>${esc(m.description || 'Sin descripción.')}</p>
     <div class="mk-tags"><span>${esc(m.category)}</span><span>${n} ${n === 1 ? 'acción' : 'acciones'}</span>${m.triggers.length ? '<span>disparador</span>' : ''}</div>
@@ -641,7 +643,7 @@ function mkDetail(m) {
           <div class="zinput"><input id="mkc-${esc(f.key)}" data-mk-conn="${esc(f.key)}" type="${f.secret ? 'password' : 'text'}" autocomplete="off" placeholder="${esc(saved[f.key] ? `${saved[f.key]} (vacío = sin cambios)` : f.placeholder ?? '')}" /></div>
           ${f.help ? `<small class="zhelp">${esc(f.help)}</small>` : ''}</div>`).join('')}
         <div class="conn-actions"><button class="primary" data-mk-save>${ok ? 'Guardar cambios' : 'Conectar'}</button>${ok ? '<button class="ghost" data-mk-disc>Desconectar</button>' : ''}<span class="muted small" id="mk-conn-msg"></span></div>
-        <p class="muted small">Se guardan en tu servidor (<code>data/connections.json</code>, sin cifrar, solo legible por tu usuario).</p>
+        <p class="muted small">Se guardan cifradas (AES-256-GCM) con la clave de tu empresa y nunca se muestran completas.</p>
       </section>` : ''}
       ${m.triggers.length ? `<section class="mk-sec"><h3>Disparadores <small>${m.triggers.length}</small></h3><ul class="mk-ops">${m.triggers.map((t) => `<li><b>${esc(t.name)}</b>${t.description ? `<small>${esc(t.description)}</small>` : ''}</li>`).join('')}</ul></section>` : ''}
       <section class="mk-sec"><h3>Acciones <small>${m.actions.length}</small></h3><ul class="mk-ops">${m.actions.map((a) => `<li data-mk-act="${esc(a.key)}"><b>${esc(a.name)}</b>${a.description ? `<small>${esc(a.description)}</small>` : ''}</li>`).join('') || '<li class="muted">—</li>'}</ul></section>
@@ -686,6 +688,17 @@ function mkDetail(m) {
     close();
     loadModulesView();
   });
+}
+
+// Abre la ficha de una app del marketplace (p. ej. desde "Falta conectar" de un módulo de negocio)
+export async function openAppDetail(key) {
+  if (!modules.length) await loadModulesView();
+  const m = modByKey(key);
+  if (m) mkDetail(m);
+}
+
+export function setTenantSlug(slug) {
+  tenantSlug = slug || 'default';
 }
 
 export async function loadModulesView() {

@@ -1,27 +1,24 @@
 // Métricas por mensaje: tokens, coste, latencia por paso y ruta (tema, respuesta
-// libre, NanoClaw...). Cada turno se guarda como una línea JSON en
-// data/metrics/events.jsonl. Los datos de ejemplo van aparte, en demo.jsonl.
+// libre, Claude Code...). Cada turno se guarda como una línea JSON en
+// data/tenants/<id>/metrics/events.jsonl. Los datos de ejemplo van aparte, en demo.jsonl.
 import { AsyncLocalStorage } from 'node:async_hooks';
 import { appendFile, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
-import { join } from 'node:path';
-import { ROOT } from './store.ts';
+import { tenantDataPath } from './tenancy/paths.ts';
 
-const DIR = join(ROOT, 'data', 'metrics');
-const EVENTS = join(DIR, 'events.jsonl');
-const DEMO = join(DIR, 'demo.jsonl');
+const dir = (tenantId: number) => tenantDataPath(tenantId, 'metrics');
+const eventsFile = (tenantId: number) => tenantDataPath(tenantId, 'metrics', 'events.jsonl');
+const demoFile = (tenantId: number) => tenantDataPath(tenantId, 'metrics', 'demo.jsonl');
 
-// Precios en USD por millón de tokens. Configurables porque cambian con el tiempo:
-// revisa la página de precios de tu proveedor y ajústalos en .env.
+// Los precios de los modelos van por proveedor y modelo en src/llm-providers.ts.
+// Aquí quedan la voz y el presupuesto mensual.
 export const PRICES = {
-  input: Number(process.env.PRICE_INPUT_PER_M ?? 0.28),
-  cacheHit: Number(process.env.PRICE_CACHE_HIT_PER_M ?? 0.028),
-  output: Number(process.env.PRICE_OUTPUT_PER_M ?? 0.42),
   ttsPer1kChars: Number(process.env.PRICE_TTS_PER_1K_CHARS ?? 0),
   monthlyBudget: Number(process.env.MONTHLY_BUDGET_USD ?? 20),
 };
 
-export type Route = 'saludo' | 'tema' | 'generativa' | 'nanoclaw';
+// 'nanoclaw' solo aparece en métricas antiguas (backend retirado)
+export type Route = 'saludo' | 'tema' | 'generativa' | 'claude-code' | 'nanoclaw';
 export type Channel = 'ui' | 'api' | 'openai' | 'mcp';
 
 export interface TurnEvent {
@@ -34,8 +31,23 @@ export interface TurnEvent {
   topic?: string;
   tokens: { input: number; cacheHit: number; output: number; known: boolean };
   costUsd: number;
+  // Desglose por modelo ("proveedor:modelo"): cuántas llamadas, tokens y coste
+  models?: Record<string, ModelUse>;
   latencyMs: { total: number; steps: Record<string, number> };
   error?: string;
+  demo?: boolean;
+}
+
+export interface ModelUse { calls: number; input: number; cacheHit: number; output: number; costUsd: number }
+
+// Llamadas al LLM fuera de una conversación (flujos, asistente de automatización)
+export interface LlmEvent {
+  type: 'llm';
+  ts: string;
+  purpose: string;
+  tokens: { input: number; cacheHit: number; output: number; known: boolean };
+  costUsd: number;
+  models: Record<string, ModelUse>;
   demo?: boolean;
 }
 
@@ -49,22 +61,20 @@ export interface TtsEvent {
   demo?: boolean;
 }
 
-export type MetricEvent = TurnEvent | TtsEvent;
+export type MetricEvent = TurnEvent | TtsEvent | LlmEvent;
 
 interface TurnCtx {
   input: number;
   cacheHit: number;
   output: number;
   llmCalls: number;
+  costUsd: number;
+  models: Record<string, ModelUse>;
   steps: Record<string, number>;
   route?: Route;
 }
 
 const als = new AsyncLocalStorage<TurnCtx>();
-
-export function costOf(input: number, cacheHit: number, output: number): number {
-  return ((input - cacheHit) * PRICES.input + cacheHit * PRICES.cacheHit + output * PRICES.output) / 1_000_000;
-}
 
 // Mide un paso del turno en curso (no hace nada fuera de un turno)
 export async function timed<T>(step: string, fn: () => Promise<T>): Promise<T> {
@@ -77,31 +87,53 @@ export async function timed<T>(step: string, fn: () => Promise<T>): Promise<T> {
   }
 }
 
-export function addUsage(u: { prompt_tokens?: number; completion_tokens?: number; prompt_cache_hit_tokens?: number } | undefined): void {
+export interface Usage { input: number; cacheHit: number; output: number; costUsd: number }
+
+function addTo(models: Record<string, ModelUse>, model: string, u: Usage): void {
+  const m = (models[model] ??= { calls: 0, input: 0, cacheHit: 0, output: 0, costUsd: 0 });
+  m.calls++;
+  m.input += u.input;
+  m.cacheHit += u.cacheHit;
+  m.output += u.output;
+  m.costUsd += u.costUsd;
+}
+
+// Apunta una llamada al LLM. Dentro de una conversación suma al turno; fuera
+// (flujos, asistente) se guarda como evento 'llm' de la empresa si se indica.
+export function addUsage(model: string, u: Usage, outside?: { tenantId: number; purpose: string }): void {
   const ctx = als.getStore();
-  if (!ctx || !u) return;
-  ctx.input += u.prompt_tokens ?? 0;
-  ctx.cacheHit += u.prompt_cache_hit_tokens ?? 0;
-  ctx.output += u.completion_tokens ?? 0;
-  ctx.llmCalls++;
+  if (ctx) {
+    ctx.input += u.input;
+    ctx.cacheHit += u.cacheHit;
+    ctx.output += u.output;
+    ctx.costUsd += u.costUsd;
+    ctx.llmCalls++;
+    addTo(ctx.models, model, u);
+    return;
+  }
+  if (!outside) return;
+  const models: Record<string, ModelUse> = {};
+  addTo(models, model, u);
+  append(outside.tenantId, { type: 'llm', ts: new Date().toISOString(), purpose: outside.purpose, tokens: { input: u.input, cacheHit: u.cacheHit, output: u.output, known: true }, costUsd: u.costUsd, models })
+    .catch((e) => console.warn('[metrics]', e.message));
 }
 
 export function setRoute(route: Route): void {
   const ctx = als.getStore();
-  if (ctx && (!ctx.route || route === 'nanoclaw' || (route === 'generativa' && ctx.route === 'saludo'))) ctx.route = route;
+  if (ctx && (!ctx.route || route === 'claude-code' || (route === 'generativa' && ctx.route === 'saludo'))) ctx.route = route;
 }
 
-async function append(file: string, event: MetricEvent): Promise<void> {
-  await mkdir(DIR, { recursive: true });
-  await appendFile(file, `${JSON.stringify(event)}\n`, 'utf8');
+async function append(tenantId: number, event: MetricEvent): Promise<void> {
+  await mkdir(dir(tenantId), { recursive: true });
+  await appendFile(eventsFile(tenantId), `${JSON.stringify(event)}\n`, 'utf8');
 }
 
 // Ejecuta un turno midiendo todo lo que pasa dentro y lo registra al terminar
 export async function runTurn<T extends { sessionId: string; topic?: string }>(
-  meta: { agentId: string; channel: Channel },
+  meta: { tenantId: number; agentId: string; channel: Channel },
   fn: () => Promise<T>,
 ): Promise<T> {
-  const ctx: TurnCtx = { input: 0, cacheHit: 0, output: 0, llmCalls: 0, steps: {} };
+  const ctx: TurnCtx = { input: 0, cacheHit: 0, output: 0, llmCalls: 0, costUsd: 0, models: {}, steps: {} };
   const start = performance.now();
   let result: T | undefined;
   let error: string | undefined;
@@ -121,18 +153,18 @@ export async function runTurn<T extends { sessionId: string; topic?: string }>(
       channel: meta.channel,
       route: ctx.route ?? 'tema',
       ...(result?.topic ? { topic: result.topic } : {}),
-      // Por NanoClaw no llegan cifras de tokens: se marcan como desconocidas
-      tokens: { input: ctx.input, cacheHit: ctx.cacheHit, output: ctx.output, known: ctx.route !== 'nanoclaw' },
-      costUsd: costOf(ctx.input, ctx.cacheHit, ctx.output),
+      tokens: { input: ctx.input, cacheHit: ctx.cacheHit, output: ctx.output, known: true },
+      costUsd: ctx.costUsd,
+      ...(Object.keys(ctx.models).length ? { models: ctx.models } : {}),
       latencyMs: { total: Math.round(performance.now() - start), steps },
       ...(error ? { error } : {}),
     };
-    append(EVENTS, event).catch((e) => console.warn('[metrics]', e.message));
+    append(meta.tenantId, event).catch((e) => console.warn('[metrics]', e.message));
   }
 }
 
-export async function recordTts(agentId: string | undefined, chars: number, latencyMs: number): Promise<void> {
-  await append(EVENTS, {
+export async function recordTts(tenantId: number, agentId: string | undefined, chars: number, latencyMs: number): Promise<void> {
+  await append(tenantId, {
     type: 'tts',
     ts: new Date().toISOString(),
     ...(agentId ? { agentId } : {}),
@@ -158,17 +190,32 @@ async function readJsonl(file: string): Promise<MetricEvent[]> {
     });
 }
 
-export async function readEvents(): Promise<{ events: MetricEvent[]; demo: boolean }> {
-  const real = await readJsonl(EVENTS);
-  const demo = await readJsonl(DEMO);
+export async function readEvents(tenantId: number): Promise<{ events: MetricEvent[]; demo: boolean }> {
+  const real = await readJsonl(eventsFile(tenantId));
+  const demo = await readJsonl(demoFile(tenantId));
   return { events: [...real, ...demo.map((e) => ({ ...e, demo: true }))], demo: demo.length > 0 };
 }
 
-export async function clearDemo(): Promise<void> {
-  await rm(DEMO, { force: true });
+export async function clearDemo(tenantId: number): Promise<void> {
+  await rm(demoFile(tenantId), { force: true });
 }
 
-export async function writeDemo(events: MetricEvent[]): Promise<void> {
-  await mkdir(DIR, { recursive: true });
-  await writeFile(DEMO, events.map((e) => JSON.stringify(e)).join('\n') + '\n', 'utf8');
+export async function writeDemo(tenantId: number, events: MetricEvent[]): Promise<void> {
+  await mkdir(dir(tenantId), { recursive: true });
+  await writeFile(demoFile(tenantId), events.map((e) => JSON.stringify(e)).join('\n') + '\n', 'utf8');
+}
+
+// Consumo de una empresa desde una fecha (para el superadmin y los límites del plan).
+// Una conversación = una sesión distinta con al menos un turno.
+export async function usageSince(tenantId: number, since: Date): Promise<{ conversations: number; turns: number; costUsd: number; ttsChars: number }> {
+  const from = since.toISOString();
+  const sessions = new Set<string>();
+  let turns = 0, costUsd = 0, ttsChars = 0;
+  for (const e of await readJsonl(eventsFile(tenantId))) {
+    if (e.ts < from) continue;
+    costUsd += e.costUsd ?? 0;
+    if (e.type === 'turn') { turns++; if (e.sessionId && e.sessionId !== 'error') sessions.add(e.sessionId); }
+    else if (e.type === 'tts') ttsChars += e.chars ?? 0;
+  }
+  return { conversations: sessions.size, turns, costUsd: Math.round(costUsd * 10000) / 10000, ttsChars };
 }

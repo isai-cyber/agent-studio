@@ -1,4 +1,4 @@
-// Integración con los propios agentes de Agent Studio.
+// Integración con los propios agentes de CrawStudio A.I.
 import type { ModuleDef } from '../../src/modules/sdk.ts';
 
 export default {
@@ -7,8 +7,8 @@ export default {
   description: 'Dispara flujos cuando un agente responde y habla con tus agentes desde un flujo.',
   icon: '🤖',
   color: '#ff4fa3',
-  category: 'Agent Studio',
-  author: 'Agent Studio',
+  category: 'CrawStudio A.I',
+  author: 'CrawStudio A.I',
   version: '1.0.0',
   triggers: [
     {

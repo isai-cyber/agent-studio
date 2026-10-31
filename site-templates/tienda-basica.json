@@ -1,0 +1,13 @@
+{
+  "name": "Tienda básica",
+  "description": "Portada con imagen, presentación, catálogo con carrito y contacto.",
+  "fields": [
+    { "key": "titulo", "label": "Título principal", "type": "text", "default": "Bienvenido a nuestra tienda" },
+    { "key": "subtitulo", "label": "Subtítulo", "type": "textarea", "default": "Productos seleccionados con envío a todo el país." },
+    { "key": "portada", "label": "Imagen de portada", "type": "image" },
+    { "key": "color", "label": "Color principal", "type": "color", "default": "#2563eb" },
+    { "key": "sobre", "label": "Sobre nosotros", "type": "textarea", "default": "Somos un negocio local con años de experiencia." },
+    { "key": "whatsapp", "label": "Enlace de WhatsApp", "type": "url" },
+    { "key": "email", "label": "Email de contacto", "type": "text" }
+  ]
+}

@@ -316,7 +316,7 @@ const DOMAINS: DomainSpec[] = [
 // ---------- construcción de agentes ----------
 
 async function writeKnowledge(id: string, files: Record<string, string>): Promise<KnowledgeSource[]> {
-  const dir = join(agentDir(id), 'knowledge');
+  const dir = join(agentDir(1, id), 'knowledge');
   await rm(dir, { recursive: true, force: true });
   await mkdir(dir, { recursive: true });
   const out: KnowledgeSource[] = [];
@@ -621,7 +621,7 @@ async function main() {
     await buildApis(),
   ];
   for (const a of agents) {
-    await saveAgent(a);
+    await saveAgent(1, a);
     console.log(`✔ ${a.icon} ${a.name} (${a.id}): ${a.topics?.length ?? 0} temas, ${a.knowledge?.length ?? 0} fuentes, ${a.actions?.length ?? 0} acciones`);
   }
 

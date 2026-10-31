@@ -31,7 +31,7 @@ export default {
   icon: '⚡',
   color: '#8b5cf6',
   category: 'Básicos',
-  author: 'Agent Studio',
+  author: 'CrawStudio A.I',
   version: '1.0.0',
   triggers: [
     { key: 'manual', name: 'Manual', type: 'manual', description: 'Se ejecuta con el botón "Probar" o desde la API.' },

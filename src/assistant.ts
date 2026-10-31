@@ -8,9 +8,10 @@ import { randomUUID } from 'node:crypto';
 import { listModules, getTrigger, getAction } from './modules/registry.ts';
 import { listFlows, getFlow, saveFlow, type Flow, type FlowStep } from './flows.ts';
 import { listAgents, saveAgent, uniqueId, slugify } from './store.ts';
-import { chat, llmConfigured } from './llm.ts';
+import { chat, llmAvailable } from './llm.ts';
 import { getConnection } from './connections.ts';
 import type { AgentDef } from './types.ts';
+import { tenantSlug } from './tenancy/tenants.ts';
 
 const norm = (s: string) => s.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 const has = (t: string, re: RegExp) => re.test(t);
@@ -116,7 +117,7 @@ const ACTIONS: ActionRule[] = [
   { re: /linear/, app: 'linear', build: (c) => ({ module: 'linear', key: 'issue', name: 'Crear incidencia en Linear', args: { teamId: '', title: c.trig.text || c.trig.summary, description: msg(c) } }) },
   { re: /todoist|tarea/, app: 'todoist', build: (c) => ({ module: 'todoist', key: 'task', name: 'Crear tarea en Todoist', args: { content: c.trig.text || c.trig.summary, description: msg(c) } }) },
   { re: /calendar|calendario|evento|reunion/, app: 'google-calendar', build: (c) => ({ module: 'google-calendar', key: 'create-event', name: 'Crear evento en Google Calendar', args: { summary: c.trig.label, start: '', end: '', description: msg(c) } }) },
-  { re: /notificaci|push|ntfy|avisame al movil|al celular/, build: (c) => ({ module: 'ntfy', key: 'push', name: 'Notificación al móvil', args: { topic: `agent-studio-${randomUUID().slice(0, 8)}`, message: msg(c), title: 'Agent Studio' } }) },
+  { re: /notificaci|push|ntfy|avisame al movil|al celular/, build: (c) => ({ module: 'ntfy', key: 'push', name: 'Notificación al móvil', args: { topic: `agent-studio-${randomUUID().slice(0, 8)}`, message: msg(c), title: 'CrawStudio A.I' } }) },
   { re: /mercado ?pago|enlace de pago|link de pago/, app: 'mercadopago', build: () => ({ module: 'mercadopago', key: 'payment-link', name: 'Crear enlace de pago', args: { title: '', price: '', currency: 'MXN' } }) },
 ];
 
@@ -199,8 +200,8 @@ const wantsAgent = (t: string) => /atiend|respond\w* (a|las|los|dudas|preguntas|
 
 // ---------- planificación con LLM (opcional) ----------
 
-async function llmPlan(text: string): Promise<{ trigger: Flow['trigger']; steps: FlowStep[]; name: string } | null> {
-  if (!llmConfigured()) return null;
+async function llmPlan(tenantId: number, text: string): Promise<{ trigger: Flow['trigger']; steps: FlowStep[]; name: string } | null> {
+  if (!(await llmAvailable(tenantId))) return null;
   // Las apps del catálogo (cientos) solo entran si se nombran; el resto de módulos, siempre
   const mentioned = new Set(catalogMentions(normName(text)).map((m) => m.mod.key));
   const catalog = listModules()
@@ -213,7 +214,7 @@ async function llmPlan(text: string): Promise<{ trigger: Flow['trigger']; steps:
         { role: 'system', content: 'Diseñas automatizaciones. Devuelve SOLO JSON: {"name": string, "trigger": {"module","key","args"}, "steps": [{"module","key","name","args"}]}. Usa únicamente módulos, disparadores y acciones del catálogo. En args puedes usar {{trigger.campo}} y {{steps.<id>.campo}}, donde <id> es "paso1", "paso2"... según el orden.' },
         { role: 'user', content: `Catálogo:\n${catalog}\n\nPetición: ${text}` },
       ],
-      { json: true, temperature: 0, step: 'planificar' },
+      { json: true, temperature: 0, step: 'planificar', tenantId, purpose: 'flow' },
     );
     const plan = JSON.parse(r.content ?? '{}');
     if (!plan.trigger || !getTrigger(plan.trigger.module, plan.trigger.key)) return null;
@@ -229,13 +230,13 @@ async function llmPlan(text: string): Promise<{ trigger: Flow['trigger']; steps:
 
 // ---------- resumen para el usuario ----------
 
-async function disconnected(flow: Flow): Promise<string[]> {
+async function disconnected(tenantId: number, flow: Flow): Promise<string[]> {
   const mods = new Map(listModules().map((m) => [m.key, m]));
   const out = new Set<string>();
   for (const s of [...(flow.trigger ? [flow.trigger] : []), ...flow.steps]) {
     const mod = mods.get(s.module);
     if (!mod?.auth) continue;
-    const c = await getConnection(mod.key, mod.auth.fields.map((f) => f.key));
+    const c = await getConnection(tenantId, mod.key, mod.auth.fields.map((f) => f.key));
     if (mod.auth.fields.some((f) => !f.optional && !c[f.key])) out.add(mod.name);
   }
   return [...out];
@@ -275,15 +276,15 @@ function withDefaults(flow: Partial<Flow>): Partial<Flow> {
 
 export interface AssistantResult { reply: string; flow: Flow; agent?: { id: string; name: string } | null; created: boolean }
 
-async function createAgentFor(text: string): Promise<AgentDef> {
+async function createAgentFor(tenantId: number, text: string): Promise<AgentDef> {
   // Hasta 7 palabras, sin terminar en preposición o artículo ("…de mi tienda", no "…de mi")
   const STOP = new Set(['de', 'del', 'la', 'el', 'los', 'las', 'mi', 'mis', 'tu', 'por', 'a', 'al', 'para', 'con', 'y', 'en', 'un', 'una']);
   const ws = text.replace(/[«»"'.,;:!?¿¡]/g, '').split(/\s+/).filter(Boolean).slice(0, 7);
   while (ws.length > 2 && STOP.has(ws[ws.length - 1].toLowerCase())) ws.pop();
   const words = ws.join(' ');
   const name = words.charAt(0).toUpperCase() + words.slice(1);
-  return saveAgent({
-    id: await uniqueId(slugify(name)),
+  return saveAgent(tenantId, {
+    id: await uniqueId(tenantId, slugify(name)),
     name,
     icon: '✨',
     description: text,
@@ -294,16 +295,16 @@ async function createAgentFor(text: string): Promise<AgentDef> {
 }
 
 // Crea un flujo nuevo (y un agente si la petición describe uno) a partir de una frase
-export async function planFromText(text: string): Promise<AssistantResult> {
+export async function planFromText(tenantId: number, text: string): Promise<AssistantResult> {
   const t = norm(text);
   const urls = text.match(/https?:\/\/[^\s)"']+/g) ?? [];
   let agent: AgentDef | null = null;
-  if (wantsAgent(t)) agent = await createAgentFor(text);
+  if (wantsAgent(t)) agent = await createAgentFor(tenantId, text);
 
-  const viaLlm = await llmPlan(text);
+  const viaLlm = await llmPlan(tenantId, text);
   let flow: Flow;
   if (viaLlm) {
-    flow = await saveFlow(withDefaults({ name: viaLlm.name, active: false, trigger: viaLlm.trigger, steps: viaLlm.steps }));
+    flow = await saveFlow(tenantId, withDefaults({ name: viaLlm.name, active: false, trigger: viaLlm.trigger, steps: viaLlm.steps }));
   } else {
     const trig = pickTrigger(t);
     const steps = pickActions(t, { trig, agentId: agent?.id, prev: [], text: t, urls });
@@ -311,7 +312,7 @@ export async function planFromText(text: string): Promise<AssistantResult> {
       ? { id: sid(), module: 'agent-studio', key: 'chat', name: 'Responder con el agente', args: { agentId: agent.id, message: trig.text || '{{trigger.body.mensaje}}' } }
       : { id: sid(), module: 'formato', key: 'template', name: 'Preparar el mensaje', args: { template: trig.summary } });
     const sample = trig.key === 'webhook' ? { body: { nombre: 'Ana', mensaje: 'Hola, ¿qué horarios tienen?', telefono: '5215555555555' } } : trig.key === 'agent-turn' ? { agentId: agent?.id ?? 'soporte-al-cliente', agentName: agent?.name ?? 'Soporte', message: 'quiero hablar con una persona', topic: 'Hablar con una persona' } : undefined;
-    flow = await saveFlow(withDefaults({ name: text.length > 70 ? `${text.slice(0, 67)}…` : text, active: false, trigger: { module: trig.module, key: trig.key, args: trig.args }, steps, ...(sample ? { testPayload: sample } : {}) }));
+    flow = await saveFlow(tenantId, withDefaults({ name: text.length > 70 ? `${text.slice(0, 67)}…` : text, active: false, trigger: { module: trig.module, key: trig.key, args: trig.args }, steps, ...(sample ? { testPayload: sample } : {}) }));
   }
   const d = describe(flow);
   const reply = [
@@ -325,26 +326,26 @@ export async function planFromText(text: string): Promise<AssistantResult> {
 }
 
 // Un mensaje de chat: crea o modifica el flujo en curso
-export async function assistantTurn(message: string, flowId?: string): Promise<AssistantResult> {
+export async function assistantTurn(tenantId: number, message: string, flowId?: string): Promise<AssistantResult> {
   const t = norm(message);
   const urls = message.match(/https?:\/\/[^\s)"']+/g) ?? [];
   let flow: Flow | null = null;
-  if (flowId) { try { flow = await getFlow(flowId); } catch { flow = null; } }
+  if (flowId) { try { flow = await getFlow(tenantId, flowId); } catch { flow = null; } }
   const isNew = !flow || /^(crea|crear|nueva|nuevo|hazme|haz|quiero|necesito)\b.*(automatiz|flujo|bot|agente|asistente)|^(cuando|cada vez que)/.test(t);
-  if (isNew) return planFromText(message);
+  if (isNew) return planFromText(tenantId, message);
   flow = flow!;
 
   const trigCtx: TriggerPick = (() => {
     const tr = TRIGGERS.find((x) => flow!.trigger && x.pick().module === flow!.trigger.module && x.pick().key === flow!.trigger.key)?.pick();
     return tr ?? { module: flow!.trigger?.module ?? 'core', key: flow!.trigger?.key ?? 'manual', args: {}, summary: '{{trigger}}', text: '', label: 'el disparador' };
   })();
-  const agents = await listAgents();
+  const agents = await listAgents(tenantId);
   const agentId = flow.steps.find((s) => s.module === 'agent-studio')?.args?.agentId as string | undefined ?? agents.find((a) => t.includes(norm(a.name)))?.id;
   let reply = '';
 
   if (/publica|activa|enciende|ponlo en marcha/.test(t)) {
     const d = describe(flow);
-    const off = await disconnected(flow);
+    const off = await disconnected(tenantId, flow);
     if (off.length) reply = `Antes de publicar conecta: ${off.join(', ')} (en cada tarjeta, paso «Elegir conexión»).`;
     else if (d.missing.length) reply = `Antes de publicar completa: ${d.missing.join(' · ')}.`;
     else { flow.active = true; reply = '✅ Publicada. Ya se ejecutará sola.'; }
@@ -376,12 +377,12 @@ export async function assistantTurn(message: string, flowId?: string): Promise<A
       flow.steps.push(...added);
       reply = `Añadí: ${added.map((s) => s.name).join(', ')}.`;
     } else if (/webhook|url/.test(t) && flow.trigger?.key === 'webhook') {
-      reply = `Tu URL de webhook es /hooks/${flow.id}. Envía un POST con JSON (cuando el flujo esté publicado).`;
+      reply = `Tu URL de webhook es /hooks/${await tenantSlug(tenantId)}/${flow.id}. Envía un POST con JSON (cuando el flujo esté publicado).`;
     } else {
       reply = 'No entendí qué cambiar. Prueba con «añade un correo a ventas@…», «avisa por Slack», «conecta https://…/mcp», «quita el paso 2», «cada hora» o «publícalo».';
     }
   }
-  flow = await saveFlow(withDefaults(flow) as Flow);
+  flow = await saveFlow(tenantId, withDefaults(flow) as Flow);
   const d = describe(flow);
   return {
     reply: [reply, '', ...d.lines, d.needsConnection.length && !flow.active ? `\nConexiones necesarias: ${d.needsConnection.join(', ')}.` : ''].filter((x) => x !== undefined).join('\n').trim(),
@@ -391,7 +392,7 @@ export async function assistantTurn(message: string, flowId?: string): Promise<A
   };
 }
 
-export async function recentFlows() {
-  return (await listFlows()).slice(0, 5).map((f) => ({ id: f.id, name: f.name }));
+export async function recentFlows(tenantId: number) {
+  return (await listFlows(tenantId)).slice(0, 5).map((f) => ({ id: f.id, name: f.name }));
 }
 

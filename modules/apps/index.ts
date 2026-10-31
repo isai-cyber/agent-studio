@@ -447,6 +447,19 @@ const APPS: HttpAppDef[] = [
       body: (a) => ({ items: [{ title: a.title, quantity: 1, unit_price: Number(a.price), currency_id: a.currency || 'MXN' }] }), pick: (d) => ({ id: d.id, link: d.init_point }) }],
   },
 
+  {
+    key: 'facturama', name: 'Facturama (CFDI)', icon: '🧾', color: '#0A7CC1', category: 'Comercio', docs: 'https://apisandbox.facturama.mx/guias/api-web/cfdi/factura',
+    description: 'Facturación electrónica CFDI 4.0 para México. La usa el módulo "Facturación CFDI".',
+    auth: {
+      fields: [field('user', 'Usuario de Facturama'), secret('password', 'Contraseña'), { ...field('sandbox', 'Entorno de pruebas (sí / no)', 'Escribe "no" para facturar de verdad.', 'sí'), optional: true }],
+      apply: (h, c) => { h.Authorization = basic(c.user, c.password); },
+    },
+    actions: [{ key: 'create-cfdi', name: 'Emitir CFDI', method: 'POST',
+      url: (_a, c) => `https://${/^no$/i.test(String(c.sandbox ?? '')) ? 'api' : 'apisandbox'}.facturama.mx/3/cfdis`,
+      args: [{ key: 'cfdi', label: 'CFDI (JSON según la API de Facturama)', type: 'json', required: true, variables: true }],
+      body: (a) => json(a.cfdi), pick: (d) => ({ id: d.Id, folio: d.Folio, serie: d.Serie, total: d.Total, uuid: d.Complement?.TaxStamp?.Uuid }) }],
+  },
+
   // ───────────── Formularios y contenido ─────────────
   {
     key: 'typeform', name: 'Typeform', icon: '📄', color: '#262627', category: 'Formularios', docs: 'https://www.typeform.com/developers/responses/reference/retrieve-responses/',

@@ -9,7 +9,7 @@
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap" />
 <style>
   :root {
-    /* Tema claro, a juego con Agent Studio (blanco + índigo) */
+    /* Tema claro, a juego con CrawStudio A.I (blanco + índigo) */
     --bg: #f6f7fb;
     --bg-2: #ffffff;
     --panel: rgba(255, 255, 255, 0.95);
@@ -1368,7 +1368,7 @@
   if (window.ResizeObserver) new ResizeObserver(() => { clearTimeout(resizeTimer); resizeTimer = setTimeout(layout, 60); }).observe($('stage'));
 
   // ================= datos en vivo (?feed=url) =================
-  // Dentro de Agent Studio la página recibe ?feed=/api/flow y usa los mensajes reales
+  // Dentro de CrawStudio A.I la página recibe ?feed=/api/flow y usa los mensajes reales
   const FEED = new URLSearchParams(location.search).get('feed');
   async function pullFeed(first) {
     try {
@@ -1404,7 +1404,7 @@
     if (!m || !m.kpis) return;
     const k = m.kpis;
     const step = Object.fromEntries((m.latency?.steps ?? []).map((s) => [s.step, s.avgMs]));
-    const g = (n) => step[n] ?? 0;
+    const g = (n) => (n === 'nanoclaw' ? (step.nanoclaw ?? 0) + (step['claude-code'] ?? 0) : step[n] ?? 0); // el antiguo NanoClaw y Claude Code ocupan las mismas nubes
     // Milisegundos atribuidos a cada nube (01–08)
     const msBy = [
       g('motor') * 0.5 + 5,

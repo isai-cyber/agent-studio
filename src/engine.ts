@@ -4,15 +4,31 @@
 //  2. Si no, respuesta generativa con instrucciones + conocimiento + acciones (tools).
 import { randomUUID } from 'node:crypto';
 import type { AgentDef, ChatMessage, Session, Step, Topic } from './types.ts';
-import { chat, llmConfigured } from './llm.ts';
+import { chat, llmAvailable } from './llm.ts';
 import { search } from './knowledge.ts';
 import { actionTools, runAction, toolName } from './actions.ts';
-import { agentDir, saveAgent } from './store.ts';
-import { useNanoclaw, syncAgent, send as nanoclawSend } from './nanoclaw.ts';
+import { agentDir } from './store.ts';
+import { useClaudeCode, useOrchestrator, send as claudeCodeSend } from './claude-code.ts';
+import { routeMessage, runClaudeCode, delegateTool, DELEGATE_TOOL } from './orchestrator.ts';
+import { jevConfigured, jevChoose } from './jev.ts';
+import { tenantLanguage, LANGUAGES, type Language } from './tenancy/tenants.ts';
+
+// Idioma de respuesta: el del agente si lo tiene; si no, el de la empresa (lo elige el superadmin)
+export async function replyLanguage(agent: AgentDef): Promise<string> {
+  return agent.language ?? LANGUAGES[await tenantLanguage(tenantOf(agent))];
+}
+
+// Textos fijos que el motor dice a los usuarios finales
+const FIXED: Record<Language, { choose: string; failed: string }> = {
+  es: { choose: 'Elige una opción', failed: 'No pude completar la solicitud.' },
+  en: { choose: 'Please choose an option', failed: "I couldn't complete the request." },
+};
+const fixed = async (agent: AgentDef) => FIXED[(agent.language ?? '').toLowerCase().startsWith('en') ? 'en' : agent.language ? 'es' : await tenantLanguage(tenantOf(agent))];
 import { runTurn, timed, setRoute, type Channel } from './metrics.ts';
 import { bus } from './flows.ts';
 import { listTools as mcpListTools, callTool as mcpCallTool } from './mcp-client.ts';
 import type { ToolSpec } from './llm.ts';
+import { featureToolsFor, isFeatureTool, runFeatureTool } from './features/enforce.ts';
 
 const sessions = new Map<string, Session>();
 const MAX_HISTORY = 30;
@@ -25,16 +41,23 @@ export interface TurnResult {
   sources?: string[];
 }
 
-export function getSession(agentId: string, sessionId?: string): Session {
+export function tenantOf(agent: AgentDef): number {
+  if (!agent.tenantId) throw Object.assign(new Error('Agente sin empresa'), { status: 500 });
+  return agent.tenantId;
+}
+
+// Una sesión solo se reutiliza con la misma empresa y el mismo agente
+export function getSession(agent: AgentDef, sessionId?: string): Session {
+  const tenantId = tenantOf(agent);
   const existing = sessionId ? sessions.get(sessionId) : undefined;
-  if (existing && existing.agentId === agentId) return existing;
-  const s: Session = { id: randomUUID(), agentId, history: [], variables: {} };
+  if (existing && existing.agentId === agent.id && existing.tenantId === tenantId) return existing;
+  const s: Session = { id: randomUUID(), tenantId, agentId: agent.id, history: [], variables: {} };
   sessions.set(s.id, s);
   return s;
 }
 
-export function resetSession(sessionId: string): void {
-  sessions.delete(sessionId);
+export function resetSession(tenantId: number, sessionId: string): void {
+  if (sessions.get(sessionId)?.tenantId === tenantId) sessions.delete(sessionId);
 }
 
 // ---------- utilidades ----------
@@ -103,9 +126,25 @@ function matchByTrigger(topics: Topic[], text: string): Topic | undefined {
   return best?.topic;
 }
 
+// Con Jev, elegir el tema es una decisión tipada: más rápida y mucho más barata que
+// pedírsela a un LLM. Si Jev duda, no se elige tema (responde la IA generativa).
+async function matchByJev(agent: AgentDef, topics: Topic[], text: string, history: ChatMessage[]): Promise<Topic | undefined> {
+  const options: Record<string, string> = { ninguno: 'Ningún tema encaja claramente con el mensaje' };
+  topics.forEach((t, i) => { options[`t${i}`] = `${t.name}: ${t.description ?? ''} Ejemplos: ${(t.triggers ?? []).slice(0, 6).join(' | ')}`.slice(0, 500); });
+  const recent = history.slice(-4).map((m) => `${m.role}: ${String(m.content ?? '').slice(0, 300)}`).join('\n');
+  const r = await timed('clasificar', () => jevChoose({ conversacion: recent, mensaje: text }, options, '¿Qué tema encaja con el último mensaje del usuario?', { tenantId: tenantOf(agent), purpose: 'clasificar' }));
+  if (!r || r.choice === 'ninguno') return undefined;
+  return topics[Number(r.choice.slice(1))];
+}
+
 async function matchByLlm(agent: AgentDef, topics: Topic[], text: string, history: ChatMessage[]): Promise<Topic | undefined> {
-  // Sin clave directa de DeepSeek (p. ej. todo pasa por NanoClaw) solo se usan las frases disparadoras
-  if (!topics.length || !llmConfigured()) return undefined;
+  // Sin ningún proveedor con clave (p. ej. todo pasa por Claude Code) solo se usan las frases disparadoras
+  if (!topics.length) return undefined;
+  if (jevConfigured()) {
+    try { return await matchByJev(agent, topics, text, history); }
+    catch (err) { console.warn('[jev] elegir tema:', (err as Error).message); }
+  }
+  if (!(await llmAvailable(tenantOf(agent)))) return undefined;
   const list = topics
     .map((t, i) => `${i + 1}. ${t.name}: ${t.description ?? ''} Ejemplos: ${(t.triggers ?? []).slice(0, 6).join(' | ')}`)
     .join('\n');
@@ -119,7 +158,8 @@ async function matchByLlm(agent: AgentDef, topics: Topic[], text: string, histor
       },
       { role: 'user', content: `Temas:\n${list}\n\nConversación reciente:\n${recent}\n\nÚltimo mensaje: ${text}` },
     ],
-    { model: agent.model, temperature: 0, json: true, step: 'clasificar' },
+    // Clasificar es la tarea más repetida y sencilla: va por la ruta barata (LLM_MODEL_CLASSIFY)
+    { temperature: 0, json: true, step: 'clasificar', tenantId: tenantOf(agent), purpose: 'classify' },
   );
   try {
     const n = Number(JSON.parse(res.content ?? '{}').topic);
@@ -138,24 +178,27 @@ function matchOption(options: string[], answer: string): string | undefined {
 
 // ---------- respuesta generativa ----------
 
-// Con AGENT_BACKEND=nanoclaw la respuesta la genera el agente en NanoClaw
-// (opencode → DeepSeek), que guarda su propio historial y conocimiento (CLAUDE.md).
-export async function ensureNanoclaw(agent: AgentDef): Promise<NonNullable<AgentDef['nanoclaw']>> {
-  if (agent.nanoclaw?.conversationId) return agent.nanoclaw;
-  agent.nanoclaw = await syncAgent(agent);
-  await saveAgent(agent);
-  return agent.nanoclaw;
-}
-
 async function generate(agent: AgentDef, session: Session, userText: string, extraPrompt?: string, useKnowledge = true): Promise<{ text: string; sources: string[]; options?: string[] }> {
-  if (useNanoclaw()) {
-    const link = await ensureNanoclaw(agent);
+  // Con AGENT_BACKEND=claude-code la respuesta la da Claude Code (Claude Agent SDK),
+  // que guarda su propio historial por conversación y lee el agente de su CLAUDE.md
+  if (useClaudeCode()) {
     const prompt = extraPrompt ? `${userText}\n\n[Contexto del flujo: ${render(extraPrompt, session.variables)}]` : userText;
-    setRoute('nanoclaw');
-    const reply = await timed('nanoclaw', () => nanoclawSend(link.conversationId, prompt));
-    return { text: reply.text, sources: ['NanoClaw'], options: reply.options };
+    setRoute('claude-code');
+    const reply = await timed('claude-code', () => claudeCodeSend(agent, session, prompt));
+    return { text: reply.text, sources: ['Claude Code'] };
   }
-  const dir = agentDir(agent.id);
+  // Modo orquestado: Jev decide si es una tarea compleja (→ Claude Code); si no,
+  // responde el orquestador (Qwen/DeepSeek), que aún puede delegar en Claude Code
+  const orchestrated = useOrchestrator();
+  if (orchestrated && (await routeMessage(agent, session, userText)) === 'claude') {
+    const prompt = extraPrompt ? `${userText}\n\n[Contexto del flujo: ${render(extraPrompt, session.variables)}]` : userText;
+    try {
+      return { text: await runClaudeCode(agent, session, prompt), sources: ['Claude Code'] };
+    } catch (err) {
+      console.warn('[orquestador] Claude Code falló, responde el orquestador:', (err as Error).message);
+    }
+  }
+  const dir = agentDir(tenantOf(agent), agent.id);
   setRoute('generativa');
   const hits = useKnowledge ? await timed('conocimiento', () => search(agent, dir, userText)) : [];
   const knowledge = hits.length
@@ -166,14 +209,15 @@ async function generate(agent: AgentDef, session: Session, userText: string, ext
   const vars = Object.keys(session.variables).length ? `\n\n# Datos de la conversación\n${JSON.stringify(session.variables)}` : '';
   const system: ChatMessage = {
     role: 'system',
-    content: `${agent.instructions}${extraPrompt ? `\n\n# Tarea actual\n${render(extraPrompt, session.variables)}` : ''}${knowledge}${vars}\n\nResponde en ${agent.language ?? 'español'}. Sé conciso.`,
+    content: `${agent.instructions}${extraPrompt ? `\n\n# Tarea actual\n${render(extraPrompt, session.variables)}` : ''}${knowledge}${vars}\n\nResponde en ${await replyLanguage(agent)}. Sé conciso.${orchestrated ? `\n\nSi la petición necesita varios pasos, investigar, analizar mucho texto, cálculos o código, usa la herramienta ${DELEGATE_TOOL} y entrega su respuesta al usuario sin rehacerla.` : ''}`,
   };
+  const delegate = orchestrated ? delegateTool(agent, session) : null;
   // Herramientas: acciones HTTP del agente + herramientas de sus servidores MCP
   const mcp = new Map<string, { server: NonNullable<AgentDef['mcpServers']>[number]; tool: string }>();
   const mcpSpecs: ToolSpec[] = [];
   for (const server of agent.mcpServers ?? []) {
     try {
-      for (const t of await timed('mcp', () => mcpListTools(server))) {
+      for (const t of await timed('mcp', () => mcpListTools({ ...server, tenantId: tenantOf(agent) }))) {
         const name = `mcp_${server.name}_${t.name}`.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64);
         mcp.set(name, { server, tool: t.name });
         mcpSpecs.push({ type: 'function', function: { name, description: `[${server.name}] ${t.description ?? t.name}`.slice(0, 1000), parameters: t.inputSchema ?? { type: 'object', properties: {} } } });
@@ -182,13 +226,17 @@ async function generate(agent: AgentDef, session: Session, userText: string, ext
       console.warn(`[mcp] ${server.name}:`, (err as Error).message);
     }
   }
-  const tools = [...actionTools(agent.actions), ...mcpSpecs];
+  // Herramientas de los módulos de negocio: solo las de módulos activos y configurados
+  const featureSpecs = await featureToolsFor(tenantOf(agent));
+  const featureNames = new Set(featureSpecs.map((t) => t.function.name));
+  const tools = [...actionTools(agent.actions).filter((t) => !isFeatureTool(t.function.name)), ...mcpSpecs, ...featureSpecs, ...(delegate ? [delegate.spec] : [])];
+  let delegatedSources = false;
   const messages: ChatMessage[] = [system, ...session.history.slice(-MAX_HISTORY)];
 
   for (let i = 0; i < 5; i++) {
-    const res = await chat(messages, { model: agent.model, temperature: agent.temperature, tools });
+    const res = await chat(messages, { model: agent.model, temperature: agent.temperature, tools, tenantId: tenantOf(agent), purpose: 'answer' });
     if (!res.tool_calls?.length) {
-      return { text: res.content ?? '', sources: [...new Set(hits.map((h) => h.source))] };
+      return { text: res.content ?? '', sources: [...new Set([...hits.map((h) => h.source), ...(delegatedSources ? ['Claude Code'] : [])])] };
     }
     messages.push({ role: 'assistant', content: res.content, tool_calls: res.tool_calls });
     for (const call of res.tool_calls) {
@@ -198,20 +246,29 @@ async function generate(agent: AgentDef, session: Session, userText: string, ext
         args = JSON.parse(call.function.arguments || '{}');
       } catch {}
       const viaMcp = mcp.get(call.function.name);
-      const out = viaMcp
+      // Una herramienta de módulo se ejecuta (o se rechaza y audita) siempre por su módulo,
+      // aunque el modelo la invente sin que estuviera en la lista
+      if (delegate && call.function.name === DELEGATE_TOOL) {
+        delegatedSources = true;
+        messages.push({ role: 'tool', tool_call_id: call.id, content: await delegate.run(args) });
+        continue;
+      }
+      const out = isFeatureTool(call.function.name) || featureNames.has(call.function.name)
+        ? await timed('modulo', () => runFeatureTool({ tenantId: tenantOf(agent), agentId: agent.id, sessionId: session.id, name: call.function.name, args }))
+        : viaMcp
         ? await timed('mcp', async () => {
             try {
-              const r = await mcpCallTool(viaMcp.server, viaMcp.tool, args);
+              const r = await mcpCallTool({ ...viaMcp.server, tenantId: tenantOf(agent) }, viaMcp.tool, args);
               return JSON.stringify({ isError: r.isError, text: r.text.slice(0, 12000), structured: r.structured });
             } catch (err) {
               return JSON.stringify({ error: (err as Error).message });
             }
           })
-        : action ? await timed('accion', () => runAction(action, args)) : JSON.stringify({ error: 'acción desconocida' });
+        : action ? await timed('accion', () => runAction(action, args, tenantOf(agent))) : JSON.stringify({ error: 'acción desconocida' });
       messages.push({ role: 'tool', tool_call_id: call.id, content: out });
     }
   }
-  return { text: 'No pude completar la solicitud.', sources: [] };
+  return { text: (await fixed(agent)).failed, sources: [] };
 }
 
 // ---------- ejecución de temas ----------
@@ -245,7 +302,7 @@ async function runSteps(agent: AgentDef, session: Session, topicName: string, st
       case 'action': {
         const action = agent.actions?.find((a) => a.name === step.action);
         const args = Object.fromEntries(Object.entries(step.inputs ?? {}).map(([k, v]) => [k, render(v, session.variables)]));
-        const raw = action ? await timed('accion', () => runAction(action, args)) : JSON.stringify({ error: `Acción "${step.action}" no definida` });
+        const raw = action ? await timed('accion', () => runAction(action, args, tenantOf(agent))) : JSON.stringify({ error: `Acción "${step.action}" no definida` });
         if (step.saveAs) {
           try {
             const parsed = JSON.parse(raw);
@@ -286,14 +343,15 @@ async function runSteps(agent: AgentDef, session: Session, topicName: string, st
 
 // Cada turno se mide y registra en las métricas (tokens, coste, latencia, ruta)
 export async function handleTurn(agent: AgentDef, sessionId: string | undefined, userText: string, channel: Channel = 'ui'): Promise<TurnResult> {
-  const r = await runTurn({ agentId: agent.id, channel }, () => turn(agent, sessionId, userText));
-  // Aviso para las automatizaciones con el disparador "Un agente responde"
-  bus.emit('agent.turn', { agentId: agent.id, agentName: agent.name, sessionId: r.sessionId, channel, message: userText, reply: r.messages.join('\n\n'), topic: r.topic ?? null, options: r.options ?? [] });
+  const tenantId = tenantOf(agent);
+  const r = await runTurn({ tenantId, agentId: agent.id, channel }, () => turn(agent, sessionId, userText));
+  // Aviso para las automatizaciones con el disparador "Un agente responde" (solo de su empresa)
+  bus.emit('agent.turn', { tenantId, agentId: agent.id, agentName: agent.name, sessionId: r.sessionId, channel, message: userText, reply: r.messages.join('\n\n'), topic: r.topic ?? null, options: r.options ?? [] });
   return r;
 }
 
 async function turn(agent: AgentDef, sessionId: string | undefined, userText: string): Promise<TurnResult> {
-  const session = getSession(agent.id, sessionId);
+  const session = getSession(agent, sessionId);
   session.variables.botName ??= agent.name;
   const out: TurnResult = { sessionId: session.id, messages: [] };
   const text = userText.trim();
@@ -321,7 +379,7 @@ async function turn(agent: AgentDef, sessionId: string | undefined, userText: st
       const chosen = matchOption(options, text);
       if (!chosen) {
         setRoute('tema');
-        out.messages.push(`Elige una opción: ${options.join(', ')}`);
+        out.messages.push(`${(await fixed(agent)).choose}: ${options.join(', ')}`);
         out.options = options;
         session.history.push({ role: 'assistant', content: out.messages[0] });
         return out;

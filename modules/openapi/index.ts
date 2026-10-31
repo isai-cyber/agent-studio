@@ -54,7 +54,7 @@ export default {
   icon: '🧾',
   color: '#6BA539',
   category: 'Conectores universales',
-  author: 'Agent Studio',
+  author: 'CrawStudio A.I',
   version: '1.0.0',
   homepage: 'https://apis.guru',
   actions: [

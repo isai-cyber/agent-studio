@@ -1,4 +1,4 @@
-// SDK de módulos de Agent Studio.
+// SDK de módulos de CrawStudio A.I.
 //
 // Un módulo es un archivo (modules/<clave>/index.ts o .js) que exporta por defecto un
 // objeto con disparadores (triggers) y acciones (actions). La forma se inspira en las
@@ -34,6 +34,7 @@ export interface StepContext {
   steps: Record<string, any>;
   env: Record<string, string | undefined>; // solo variables FLOW_* del .env
   flow: { id: string; name: string };
+  tenant: { id: number }; // empresa dueña del flujo
   log: (msg: string) => void;
   // Credenciales guardadas para una app (paso "Elegir conexión" o FLOW_<APP>_<CAMPO> del .env)
   connection: (app: string, fields?: string[]) => Promise<Record<string, string>>;
@@ -41,8 +42,12 @@ export interface StepContext {
   agentStudio: {
     chat: (agentId: string, message: string, sessionId?: string) => Promise<{ sessionId: string; reply: string; options: string[]; topic: string | null }>;
     listAgents: () => Promise<{ id: string; name: string }[]>;
-    llm: (prompt: string, system?: string, temperature?: number) => Promise<string>;
+    // purpose 'classify' usa el modelo barato de clasificación (LLM_MODEL_CLASSIFY)
+    llm: (prompt: string, system?: string, temperature?: number, purpose?: 'flow' | 'classify') => Promise<string>;
     tts: (text: string, voiceId?: string) => Promise<{ url: string; bytes: number }>;
+    // Decisiones tipadas: con Jev si está configurado (rápido y barato); si no, con el LLM de clasificar
+    choose: (state: string, options: string[], instructions?: string) => Promise<{ choice: string; confidence: number | null; via: 'jev' | 'llm' }>;
+    yesNo: (state: string, statement: string) => Promise<{ probability: number; via: 'jev' | 'llm' }>;
   };
   stop: (reason?: string) => { __stop: true; reason: string };
 }
@@ -113,7 +118,9 @@ export function renderDeep(value: unknown, vars: Record<string, unknown>): unkno
 }
 
 // Variables de entorno visibles para los flujos: solo FLOW_* (los secretos del
-// servidor, como DEEPSEEK_API_KEY, no se exponen a módulos ni plantillas)
-export function flowEnv(): Record<string, string | undefined> {
+// servidor, como DEEPSEEK_API_KEY, no se exponen a módulos ni plantillas) y solo
+// en la empresa Default: el .env es del dueño de la instalación.
+export function flowEnv(tenantId: number): Record<string, string | undefined> {
+  if (tenantId !== 1) return {};
   return Object.fromEntries(Object.entries(process.env).filter(([k]) => k.startsWith('FLOW_')));
 }

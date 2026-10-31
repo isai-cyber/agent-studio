@@ -1,4 +1,4 @@
-// Definición de un agente. Se guarda como agents/<id>/agent.yaml
+// Definición de un agente. Se guarda como agents/<tenant_id>/<id>/agent.yaml
 
 export type Step =
   | { type: 'message'; text: string }
@@ -40,6 +40,7 @@ export interface ActionDef {
 
 export interface AgentDef {
   id: string;
+  tenantId?: number; // solo en memoria: empresa del agente (no se guarda en el YAML)
   name: string;
   description?: string;
   icon?: string;
@@ -56,8 +57,6 @@ export interface AgentDef {
   source?: string; // p. ej. "copilot-studio-import" o "template"
   // Servidores MCP cuyas herramientas puede usar el agente al responder
   mcpServers?: { name: string; url?: string; transport?: 'http' | 'sse' | 'stdio'; headers?: Record<string, string>; command?: string; args?: string[] }[];
-  // Enlace con NanoClaw cuando AGENT_BACKEND=nanoclaw
-  nanoclaw?: { conversationId: string; folder: string; provider: string; model: string; syncedAt: string };
 }
 
 export interface ChatMessage {
@@ -75,9 +74,13 @@ export interface ToolCall {
 
 export interface Session {
   id: string;
+  tenantId: number;
   agentId: string;
   history: ChatMessage[];
   variables: Record<string, unknown>;
   // Pila de ejecución del tema activo (para retomar tras una pregunta)
   pending?: { topic: string; stack: Step[][]; waitingFor?: { variable: string; options?: string[] } };
+  // Sesión de Claude Code que continúa esta conversación (AGENT_BACKEND=claude-code)
+  // y lo que llevaba gastado, para apuntar en las métricas solo lo de cada turno
+  claudeCode?: { sessionId?: string; costUsd: number; tokens: { input: number; cacheHit: number; output: number } };
 }
