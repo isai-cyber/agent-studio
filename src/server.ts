@@ -12,7 +12,8 @@ import { fileURLToPath } from 'node:url';
 import YAML from 'yaml';
 import { ROOT, listAgents, getAgent, saveAgent, saveAgentYaml, deleteAgent, uniqueId, countAgents } from './store.ts';
 import { handleTurn, resetSession } from './engine.ts';
-import { useClaudeCode, BACKEND, status as claudeCodeStatus, syncAgent } from './claude-code.ts';
+import { useClaudeCode, useOrchestrator, agentBackend, status as claudeCodeStatus, syncAgent } from './claude-code.ts';
+import { jevConfigured } from './jev.ts';
 import { textToSpeech, speechToText, listVoices, voiceConfigured } from './voice.ts';
 import { llmConfigured, DEFAULT_MODEL, llmStatus } from './llm.ts';
 import { importPath, importTopicYaml } from './importer.ts';
@@ -66,12 +67,13 @@ const actor = (ctx: Ctx) => ({ actor: ctx.actor, ip: ctx.ip });
 
 route('GET', '/api/status', { noTenant: true }, async (_req, res) => {
   send(res, 200, {
-    backend: BACKEND,
+    backend: agentBackend(),
+    jev: jevConfigured(),
     llm: llmConfigured(),
     model: DEFAULT_MODEL,
     llmRoutes: llmStatus(),
     voice: voiceConfigured(),
-    ...(useClaudeCode() ? { claudeCode: claudeCodeStatus() } : {}),
+    ...(useClaudeCode() || useOrchestrator() ? { claudeCode: claudeCodeStatus() } : {}),
   });
 });
 
@@ -110,7 +112,7 @@ route('GET', '/api/agents/:id/yaml', { perm: 'agents.read' }, async (_req, res, 
 route('PUT', '/api/agents/:id/yaml', { perm: 'agents.manage' }, async (req, res, [id], ctx) => {
   const agent = await saveAgentYaml(ctx.tenantId, id, (await readBody(req)).toString('utf8'));
   // Mantener al día el CLAUDE.md de Claude Code
-  if (useClaudeCode()) await syncAgent(agent);
+  if (useClaudeCode() || useOrchestrator()) await syncAgent(agent);
   send(res, 200, agent);
 });
 
@@ -412,6 +414,7 @@ export async function startServer(port = PORT): Promise<Server> {
   console.log(`Módulos: ${l.length} (${n('API')} APIs, ${n('MCP')} servidores MCP, ${l.length - n('API') - n('MCP')} nativos)${loadErrors.length ? ` · ${loadErrors.length} con errores` : ''}`);
   console.log(`Agent Studio en http://localhost:${port}`);
   console.log(`API REST: http://localhost:${port}/v1  ·  MCP: http://localhost:${port}/mcp  ·  claves de API en Configuración → Claves de API`);
+  if (useOrchestrator()) console.log(`Backend: orquestado · Jev ${jevConfigured() ? 'decide' : 'sin clave (decide el orquestador)'} · orquestador ${llmStatus().default} · Claude Code ${claudeCodeStatus().model}`);
   if (useClaudeCode()) {
     const st = claudeCodeStatus();
     console.log(`Backend: Claude Code (${st.model}${st.builtinTools.length ? ` · herramientas: ${st.builtinTools.join(', ')}` : ''})`);

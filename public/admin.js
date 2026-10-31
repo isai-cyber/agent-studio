@@ -183,14 +183,29 @@ async function renderCharges(el, tenantId, name, estimate) {
 
 // ---------- ajustes de la plataforma ----------
 async function renderSettings(body) {
-  const { settings, llm, billing } = await api('/api/platform/settings');
-  const providers = [...llm.providers.filter((p) => !p.keyless), { key: 'anthropic', name: 'Anthropic (Claude Code)', configured: Boolean(settings.llmKeys.anthropic), models: [] }];
+  const { settings, llm, billing, backend, jev } = await api('/api/platform/settings');
+  const providers = [
+    { key: 'typesafe', name: 'TypeSafe (Jev)', configured: jev.configured, models: [jev.model], test: true },
+    ...llm.providers.filter((p) => !p.keyless).map((p) => ({ ...p, test: true })),
+    { key: 'anthropic', name: 'Anthropic (Claude Code)', configured: Boolean(settings.llmKeys.anthropic), models: [] },
+  ];
+  const MODES = [
+    ['direct', 'Directo', 'Qwen/DeepSeek responden todo (el más barato).'],
+    ['orquestado', 'Orquestado', 'Jev decide cada mensaje, Qwen/DeepSeek responden lo sencillo y Claude Code hace lo complejo.'],
+    ['claude-code', 'Claude Code', 'Claude Code responde todo (el más capaz y el más caro).'],
+  ];
   const keyRow = (p) => `<div class="cfg-field"><label for="k-${p.key}">${esc(p.name)} ${p.configured ? '<span class="feat-status ok">Configurada</span>' : '<span class="feat-status off">Sin clave</span>'}</label>
     <div class="row" style="margin:0"><input id="k-${p.key}" data-llm-key="${p.key}" type="password" autocomplete="off" placeholder="${esc(settings.llmKeys[p.key] ? `${settings.llmKeys[p.key]} (vacío = sin cambios)` : 'API key')}" />
-    ${p.key !== 'anthropic' ? `<button class="ghost" data-test="${p.key}">Probar</button>` : ''}${settings.llmKeys[p.key] ? `<button class="ghost" data-clear-key="${p.key}">Quitar</button>` : ''}</div>
+    ${p.test ? `<button class="ghost" data-test="${p.key}">Probar</button>` : ''}${settings.llmKeys[p.key] ? `<button class="ghost" data-clear-key="${p.key}">Quitar</button>` : ''}</div>
     ${p.models?.length ? `<small class="muted">Modelos: ${p.models.map(esc).join(', ')}</small>` : ''}</div>`;
   const models = llm.providers.flatMap((p) => p.models.map((m) => `${p.key}:${m}`));
   body.innerHTML = `
+    <div class="card pad">
+      <h3>Cómo responden los agentes</h3>
+      <div class="modes">${MODES.map(([v, l, d]) => `<label class="mode ${backend === v ? 'on' : ''}"><input type="radio" name="backend" value="${v}" ${backend === v ? 'checked' : ''} /> <b>${l}</b><small class="muted">${d}</small></label>`).join('')}</div>
+      <p class="muted small">En modo orquestado, Jev (TypeSafe) es opcional: sin su clave, decide el propio orquestador. Dentro de Claude Code, Jev y el modelo rápido quedan disponibles como herramientas para las operaciones repetitivas.</p>
+      <div class="row"><button class="primary" id="save-backend">Guardar modo</button><span class="muted small" id="backend-msg"></span></div>
+    </div>
     <div class="card pad">
       <h3>Claves de IA</h3>
       <p class="muted small">Son las claves con las que das el servicio: todas tus empresas usan estas. Tus clientes no ponen claves. Se guardan cifradas y mandan sobre el .env.</p>
@@ -228,6 +243,7 @@ async function renderSettings(body) {
       $(msgEl).textContent = r.changed.length ? '✔ Guardado' : 'Sin cambios';
     } catch (err) { $(msgEl).textContent = `✖ ${err.message}`; }
   };
+  $('#save-backend').onclick = () => put({ backend: body.querySelector('input[name=backend]:checked')?.value ?? '' }, '#backend-msg');
   $('#save-keys').onclick = () => put({ llmKeys: Object.fromEntries($$('[data-llm-key]', body).map((i) => [i.dataset.llmKey, i.value])) }, '#keys-msg');
   $$('[data-clear-key]', body).forEach((b) => (b.onclick = () => confirm('¿Quitar esta clave? Si no hay otra, el servicio de ese proveedor dejará de funcionar.') && put({ llmKeys: { [b.dataset.clearKey]: null } }, '#keys-msg')));
   $$('[data-test]', body).forEach((b) => (b.onclick = async () => {

@@ -28,10 +28,19 @@ import { featureToolsFor, runFeatureTool } from './features/enforce.ts';
 import { addUsage } from './metrics.ts';
 import { tenantLanguage, LANGUAGES } from './tenancy/tenants.ts';
 import { getPlatformSettings } from './platform-settings.ts';
+import { jevConfigured, jevAsk, type JevQuestion } from './jev.ts';
+import { chat, llmConfigured, defaultModelSpec } from './llm.ts';
 
+// Modo de los agentes: el de Ajustes (superadmin) o AGENT_BACKEND del .env
+//   direct      → DeepSeek/Qwen responden (src/llm.ts)
+//   claude-code → Claude Code responde todo
+//   orquestado  → Jev decide, Qwen/DeepSeek orquestan y Claude Code hace lo complejo (src/orchestrator.ts)
 const configured = (process.env.AGENT_BACKEND ?? 'direct').toLowerCase();
 if (configured === 'nanoclaw') console.warn('⚠ AGENT_BACKEND=nanoclaw ya no existe: se usa Claude Code (AGENT_BACKEND=claude-code).');
-export const BACKEND = configured === 'nanoclaw' ? 'claude-code' : configured; // direct | claude-code
+const fromEnv = configured === 'nanoclaw' ? 'claude-code' : configured === 'orchestrated' ? 'orquestado' : configured;
+export function agentBackend(): string {
+  return getPlatformSettings().backend ?? fromEnv;
+}
 
 export const MODEL = process.env.CLAUDE_CODE_MODEL || 'claude-opus-5-5';
 const EFFORT = process.env.CLAUDE_CODE_EFFORT as Options['effort'] | undefined;
@@ -42,7 +51,11 @@ const BUILTIN_TOOLS = (process.env.CLAUDE_CODE_TOOLS ?? '').split(',').map((t) =
 const SERVER = 'agent-studio';
 
 export function useClaudeCode(): boolean {
-  return BACKEND === 'claude-code';
+  return agentBackend() === 'claude-code';
+}
+
+export function useOrchestrator(): boolean {
+  return agentBackend() === 'orquestado';
 }
 
 // Credenciales: las resuelve Claude Code (ANTHROPIC_API_KEY, ANTHROPIC_AUTH_TOKEN,
@@ -167,6 +180,28 @@ async function toolServer(agent: AgentDef, session: Session) {
     defs.push(tool(spec.function.name, spec.function.description, shapeOf(spec.function.parameters), async (args) =>
       asText(await runFeatureTool({ tenantId, agentId: agent.id, sessionId: session.id, name: spec.function.name, args: args as Record<string, unknown> }))));
   }
+  // Ayudantes baratos para las operaciones repetitivas: Jev para decidir (clasificar,
+  // puntuar, sí/no) y Qwen/DeepSeek para redactar textos sencillos
+  if (jevConfigured()) {
+    defs.push(tool('jev_decidir',
+      'Decisiones rápidas y baratas con Jev (no redacta texto). Haz varias preguntas a la vez sobre el mismo estado. Cada pregunta: {"type":"choice","criteria":{"opcion":"descripción",…}} (elige una), {"type":"score","criteria":["nivel 0","nivel 1",…]} (puntúa) o {"type":"noul","instructions":"afirmación"} (probabilidad 0–1 de que sea cierta). Úsalo para clasificar, filtrar, priorizar o comprobar condiciones en lugar de razonarlo tú.',
+      { estado: z.string().describe('Texto o JSON sobre el que se pregunta'), preguntas: z.record(z.string(), z.any()).describe('Nombre de la pregunta → pregunta') },
+      async (args) => {
+        try { return asText(JSON.stringify(await jevAsk(args.estado, args.preguntas as Record<string, JevQuestion>, { tenantId, purpose: 'claude-code' }))); }
+        catch (err) { return asText(JSON.stringify({ error: (err as Error).message })); }
+      }));
+  }
+  if (llmConfigured()) {
+    defs.push(tool('modelo_rapido',
+      `Pide a un modelo rápido y barato (${defaultModelSpec()}) un texto sencillo: resumir, traducir, reformular, extraer datos o un borrador. Úsalo para el trabajo repetitivo y guarda tu razonamiento para lo difícil.`,
+      { instruccion: z.string(), rol: z.string().optional() },
+      async (args) => {
+        try {
+          const r = await chat([...(args.rol ? [{ role: 'system' as const, content: String(args.rol) }] : []), { role: 'user' as const, content: String(args.instruccion) }], { tenantId, purpose: 'flow', step: 'modelo-rapido' });
+          return asText(r.content ?? '');
+        } catch (err) { return asText(JSON.stringify({ error: (err as Error).message })); }
+      }));
+  }
   return { server: createSdkMcpServer({ name: SERVER, version: '0.1.0', tools: defs }), names: defs.map((d) => d.name) };
 }
 
@@ -206,7 +241,7 @@ export async function send(agent: AgentDef, session: Session, text: string): Pro
     ...(resume ? { resume } : {}),
     model: agent.model?.startsWith('claude') ? agent.model : MODEL,
     ...(EFFORT ? { effort: EFFORT } : {}),
-    systemPrompt: `Eres un agente conversacional creado con Agent Studio que atiende a los usuarios de una empresa. Tu definición (instrucciones, temas, conocimiento y acciones) está en CLAUDE.md. Responde solo con el mensaje para el usuario.`,
+    systemPrompt: `Eres un agente conversacional creado con Agent Studio que atiende a los usuarios de una empresa. Tu definición (instrucciones, temas, conocimiento y acciones) está en CLAUDE.md. Responde solo con el mensaje para el usuario.${names.includes('jev_decidir') ? ' Para clasificar, puntuar o comprobar condiciones usa la herramienta jev_decidir.' : ''}${names.includes('modelo_rapido') ? ' Para textos sencillos y repetitivos (resúmenes, traducciones, borradores) usa modelo_rapido.' : ''}`,
     settingSources: ['project'], // carga el CLAUDE.md del espacio del agente
     tools: builtin, // [] = ninguna herramienta integrada (Bash, Read, Write…)
     allowedTools: [...builtin, ...names.map((n) => `mcp__${SERVER}__${n}`), ...Object.keys(external).map((n) => `mcp__${n}`)],

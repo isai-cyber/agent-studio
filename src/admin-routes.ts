@@ -22,6 +22,8 @@ import { countAgents } from './store.ts';
 import { DEFAULT_TENANT_ID } from './tenancy/paths.ts';
 import { maskedSettings, updatePlatformSettings } from './platform-settings.ts';
 import { llmStatus, testProvider } from './llm.ts';
+import { testJev, jevConfigured, JEV_MODEL } from './jev.ts';
+import { agentBackend, status as claudeCodeStatus } from './claude-code.ts';
 import { billingStatus, listCharges, createCharge, refreshCharge, setChargeStatus } from './platform-billing.ts';
 import { LANGUAGES } from './tenancy/tenants.ts';
 
@@ -276,17 +278,17 @@ export function registerAdminRoutes(): void {
   // ---------- superadmin: ajustes de la plataforma (claves de IA y de cobro) ----------
   // Tú das el servicio: las claves de IA son tuyas y las usan todas las empresas.
   route('GET', '/api/platform/settings', { platform: true }, async (_req, res) => {
-    send(res, 200, { settings: maskedSettings(), llm: llmStatus(), billing: billingStatus(), languages: LANGUAGES });
+    send(res, 200, { settings: maskedSettings(), llm: llmStatus(), billing: billingStatus(), languages: LANGUAGES, backend: agentBackend(), jev: { configured: jevConfigured(), model: JEV_MODEL() }, claudeCode: claudeCodeStatus() });
   });
   route('PUT', '/api/platform/settings', { platform: true }, async (req, res, _p, ctx) => {
     const r = updatePlatformSettings(await json(req));
     // En la auditoría solo van los nombres de los campos que cambiaron, nunca las claves
     if (r.changed.length) await audit({ tenantId: null, ...actorOf(ctx), action: 'platform.settings_updated', target: 'platform:settings', after: { fields: r.changed } });
-    send(res, 200, { changed: r.changed, settings: maskedSettings(), llm: llmStatus(), billing: billingStatus() });
+    send(res, 200, { changed: r.changed, settings: maskedSettings(), llm: llmStatus(), billing: billingStatus(), backend: agentBackend(), jev: { configured: jevConfigured(), model: JEV_MODEL() } });
   });
   route('POST', '/api/platform/settings/test', { platform: true }, async (req, res) => {
     const { provider } = await json<{ provider?: string }>(req);
-    send(res, 200, await testProvider(String(provider ?? '')));
+    send(res, 200, provider === 'typesafe' ? await testJev() : await testProvider(String(provider ?? '')));
   });
 
   // ---------- superadmin: cobros a cada empresa ----------

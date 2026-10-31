@@ -223,7 +223,12 @@ const EXACT = {
   ', el endpoint compatible con OpenAI y': ', the OpenAI-compatible endpoint and', '. La clave solo podrá hacer lo que marques (y nunca más de lo que puedes hacer tú). La verás una sola vez.': ". The key can only do what you tick (and never more than you can). You'll see it only once.",
   'ℹ Solo con plantillas aprobadas por Meta.': 'ℹ Only with Meta-approved templates.', 'ℹ Solo empresas mexicanas.': 'ℹ Mexican companies only.', '🔒 No incluido en tu plan': '🔒 Not included in your plan', '🔒 No disponible': '🔒 Not available',
   '). Vacío = lo del .env. En «Clasificar»,': '). Empty = the .env value. In "Classify",', 'usa el modelo más barato que tenga clave.': 'uses the cheapest model that has a key.',
-  '🛟 Modo soporte en': '🛟 Support mode in', 'Escribe': 'Write', '(p. ej.': '(e.g.', 'https://tu-dominio.com/gracias': 'https://your-domain.com/thanks', 'Gestionar claves de API ': 'Manage API keys',
+  '🛟 Modo soporte en': '🛟 Support mode in', 'Cómo responden los agentes': 'How agents reply', 'Directo': 'Direct', 'Orquestado': 'Orchestrated', 'Guardar modo': 'Save mode',
+  'Qwen/DeepSeek responden todo (el más barato).': 'Qwen/DeepSeek answer everything (cheapest).',
+  'Jev decide cada mensaje, Qwen/DeepSeek responden lo sencillo y Claude Code hace lo complejo.': 'Jev decides each message, Qwen/DeepSeek answer the simple ones and Claude Code does the complex ones.',
+  'Claude Code responde todo (el más capaz y el más caro).': 'Claude Code answers everything (most capable and most expensive).',
+  'En modo orquestado, Jev (TypeSafe) es opcional: sin su clave, decide el propio orquestador. Dentro de Claude Code, Jev y el modelo rápido quedan disponibles como herramientas para las operaciones repetitivas.': 'In orchestrated mode, Jev (TypeSafe) is optional: without its key, the orchestrator decides. Inside Claude Code, Jev and the fast model are available as tools for repetitive operations.',
+  'Jev (decidir)': 'Jev (decide)', 'Modelo rápido': 'Fast model', '¿Se cumple? (sí/no)': 'Does it hold? (yes/no)', 'Backend: orquestado': 'Backend: orchestrated', 'Escribe': 'Write', '(p. ej.': '(e.g.', 'https://tu-dominio.com/gracias': 'https://your-domain.com/thanks', 'Gestionar claves de API ': 'Manage API keys',
   'Comunicación': 'Communication', 'Analítica': 'Analytics', 'Básicos': 'Basics', 'Mensajería': 'Messaging', 'APIs públicas': 'Public APIs', 'Comercio': 'Commerce', 'Productividad': 'Productivity', 'Desarrollo': 'Development', 'Formularios': 'Forms', 'IA': 'AI',
 };
 

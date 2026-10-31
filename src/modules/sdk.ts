@@ -45,6 +45,9 @@ export interface StepContext {
     // purpose 'classify' usa el modelo barato de clasificación (LLM_MODEL_CLASSIFY)
     llm: (prompt: string, system?: string, temperature?: number, purpose?: 'flow' | 'classify') => Promise<string>;
     tts: (text: string, voiceId?: string) => Promise<{ url: string; bytes: number }>;
+    // Decisiones tipadas: con Jev si está configurado (rápido y barato); si no, con el LLM de clasificar
+    choose: (state: string, options: string[], instructions?: string) => Promise<{ choice: string; confidence: number | null; via: 'jev' | 'llm' }>;
+    yesNo: (state: string, statement: string) => Promise<{ probability: number; via: 'jev' | 'llm' }>;
   };
   stop: (reason?: string) => { __stop: true; reason: string };
 }

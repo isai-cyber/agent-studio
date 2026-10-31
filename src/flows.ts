@@ -13,6 +13,7 @@ import { flowEnv, renderDeep, type StepContext } from './modules/sdk.ts';
 import { getAction, getTrigger } from './modules/registry.ts';
 import { getConnection } from './connections.ts';
 import { blockedFlowFeatures } from './features/enforce.ts';
+import { jevConfigured, jevAsk } from './jev.ts';
 import { featureEvents } from './features/state.ts';
 
 const flowsDir = (t: number) => tenantDataPath(t, 'flows');
@@ -134,6 +135,23 @@ function context(flow: Flow, vars: { trigger: unknown; steps: Record<string, unk
         return { sessionId: r.sessionId, reply: r.messages.join('\n\n'), options: r.options ?? [], topic: r.topic ?? null };
       },
       listAgents: async () => (await listAgents(tenantId)).map((a) => ({ id: a.id, name: a.name })),
+      choose: async (state, options, instructions) => {
+        if (jevConfigured()) {
+          const keys = options.map((_, i) => `o${i}`);
+          const a = (await jevAsk(state, { d: { type: 'choice', criteria: Object.fromEntries(options.map((o, i) => [keys[i], o])), instructions: instructions || 'Elige la opción que mejor encaja.' } }, { tenantId, purpose: 'flow' })).d;
+          if (a?.type === 'choice') return { choice: options[keys.indexOf(a.choice)] ?? a.choice, confidence: a.confidence, via: 'jev' as const };
+        }
+        const out = (await chat([{ role: 'user', content: `${instructions ? `${instructions}\n` : ''}Elige UNA de estas opciones: ${options.join(', ')}. Responde solo con la opción.\n\nTexto: ${state}` }], { temperature: 0, tenantId, purpose: 'classify' })).content?.trim().toLowerCase() ?? '';
+        return { choice: options.find((o) => out.includes(o.toLowerCase())) ?? out, confidence: null, via: 'llm' as const };
+      },
+      yesNo: async (state, statement) => {
+        if (jevConfigured()) {
+          const a = (await jevAsk(state, { d: { type: 'noul', instructions: statement } }, { tenantId, purpose: 'flow' })).d;
+          if (a?.type === 'noul') return { probability: a.noul, via: 'jev' as const };
+        }
+        const out = (await chat([{ role: 'user', content: `¿Es cierto lo siguiente sobre el texto? Responde solo "sí" o "no".\nAfirmación: ${statement}\n\nTexto: ${state}` }], { temperature: 0, tenantId, purpose: 'classify' })).content?.trim().toLowerCase() ?? '';
+        return { probability: out.startsWith('s') || out.startsWith('y') ? 1 : 0, via: 'llm' as const };
+      },
       llm: async (prompt, system, temperature, purpose = 'flow') => {
         const r = await chat([...(system ? [{ role: 'system' as const, content: system }] : []), { role: 'user', content: prompt }], { temperature, tenantId, purpose });
         return r.content ?? '';

@@ -12,8 +12,11 @@ import { join } from 'node:path';
 import { DATA_DIR } from './tenancy/paths.ts';
 import { decryptPlatform, encryptPlatform } from './tenancy/crypto.ts';
 
+export type AgentBackend = 'direct' | 'claude-code' | 'orquestado';
+
 export interface PlatformSettings {
-  llmKeys: Record<string, string>; // proveedor → API key
+  backend?: AgentBackend; // cómo responden los agentes (vacío = AGENT_BACKEND del .env)
+  llmKeys: Record<string, string>; // proveedor → API key (incluye "typesafe" para Jev)
   llm: { model?: string; classify?: string; flows?: string; fallbacks?: string[] };
   billing: {
     stripe?: { secretKey?: string; currency?: string };
@@ -68,6 +71,7 @@ const CURRENCY = /^[A-Z]{3}$/;
 // Devuelve qué campos cambiaron (sin valores secretos) para la auditoría.
 // En un cambio, null borra un secreto guardado
 export interface SettingsPatch {
+  backend?: AgentBackend | '';
   llmKeys?: Record<string, string | null>;
   llm?: PlatformSettings['llm'];
   billing?: {
@@ -90,6 +94,11 @@ export function updatePlatformSettings(patch: SettingsPatch): { changed: string[
   for (const [provider, key] of Object.entries(patch.llmKeys ?? {})) {
     if (!/^[a-z0-9-]+$/.test(provider)) throw fail('Proveedor no válido');
     setSecret(`llmKeys.${provider}`, cur.llmKeys[provider], key, (v) => { if (v) cur.llmKeys[provider] = v; else delete cur.llmKeys[provider]; });
+  }
+  if (patch.backend !== undefined) {
+    const b = patch.backend || undefined;
+    if (b && !['direct', 'claude-code', 'orquestado'].includes(b)) throw fail('Modo de los agentes no válido (direct, claude-code u orquestado)');
+    if (cur.backend !== b) { cur.backend = b; changed.push('backend'); }
   }
   if (patch.llm) {
     for (const k of ['model', 'classify', 'flows'] as const) {

@@ -77,6 +77,16 @@ En **Empresas y planes → Empresas**, para cada cliente eliges:
 
 Las credenciales de Stripe (clave secreta) y Mercado Pago (access token), la moneda de cada uno y la página de vuelta tras pagar se ponen en **Empresas y planes → Ajustes**, cifradas. Son tus cuentas: tus clientes no configuran nada.
 
+## Modo orquestado: Jev + Qwen/DeepSeek + Claude Code
+
+Con **Empresas y planes → Ajustes → Cómo responden los agentes = Orquestado** (o `AGENT_BACKEND=orquestado`), cada modelo hace lo que mejor y más barato hace:
+
+1. **[Jev](https://docs.typesafe.ai) decide** ($0,042 por millón de tokens de entrada, salida gratis, menos de medio segundo). Para cada mensaje, una decisión tipada: ¿se responde con un mensaje o es una tarea compleja? También elige el tema guiado del agente y, en los flujos, hace los pasos «Clasificar texto» y «¿Se cumple? (sí/no)». Jev no redacta texto. Si duda (confianza por debajo de `JEV_MIN_CONFIDENCE`), no actúa y decide el orquestador.
+2. **Qwen o DeepSeek orquestan.** Responden lo sencillo con las herramientas del agente y, lo que no pueden hacer, lo delegan en Claude Code con la herramienta `delegar_a_claude_code`.
+3. **Claude Code hace lo complejo:** lo que Jev marca como complejo o lo que le delega el orquestador. Dentro de Claude Code, Jev (`jev_decidir`) y el modelo rápido (`modelo_rapido`, Qwen/DeepSeek) son herramientas para las operaciones repetitivas: clasificar, puntuar o comprobar muchos elementos, resumir o traducir.
+
+Jev es opcional: sin su clave decide el propio orquestador. Si Claude Code falla, responde el orquestador. En **Métricas**, «Coste por modelo» separa lo que gasta cada uno (`typesafe:jev-…`, `qwen:…`, `deepseek:…`, `claude-code:…`). La clave de TypeSafe se pone en **Ajustes → Claves de IA**, con botón para probarla.
+
 ## Backend Claude Code
 
 Con `AGENT_BACKEND=claude-code` en `.env`, las respuestas libres de los agentes las da **Claude Code**, usado como librería con el [Claude Agent SDK](https://code.claude.com/docs/en/agent-sdk) (`@anthropic-ai/claude-agent-sdk`). Agent Studio sigue siendo el editor y el chat de pruebas:

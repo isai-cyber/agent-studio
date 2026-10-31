@@ -8,7 +8,9 @@ import { chat, llmAvailable } from './llm.ts';
 import { search } from './knowledge.ts';
 import { actionTools, runAction, toolName } from './actions.ts';
 import { agentDir } from './store.ts';
-import { useClaudeCode, send as claudeCodeSend } from './claude-code.ts';
+import { useClaudeCode, useOrchestrator, send as claudeCodeSend } from './claude-code.ts';
+import { routeMessage, runClaudeCode, delegateTool, DELEGATE_TOOL } from './orchestrator.ts';
+import { jevConfigured, jevChoose } from './jev.ts';
 import { tenantLanguage, LANGUAGES, type Language } from './tenancy/tenants.ts';
 
 // Idioma de respuesta: el del agente si lo tiene; si no, el de la empresa (lo elige el superadmin)
@@ -124,9 +126,25 @@ function matchByTrigger(topics: Topic[], text: string): Topic | undefined {
   return best?.topic;
 }
 
+// Con Jev, elegir el tema es una decisión tipada: más rápida y mucho más barata que
+// pedírsela a un LLM. Si Jev duda, no se elige tema (responde la IA generativa).
+async function matchByJev(agent: AgentDef, topics: Topic[], text: string, history: ChatMessage[]): Promise<Topic | undefined> {
+  const options: Record<string, string> = { ninguno: 'Ningún tema encaja claramente con el mensaje' };
+  topics.forEach((t, i) => { options[`t${i}`] = `${t.name}: ${t.description ?? ''} Ejemplos: ${(t.triggers ?? []).slice(0, 6).join(' | ')}`.slice(0, 500); });
+  const recent = history.slice(-4).map((m) => `${m.role}: ${String(m.content ?? '').slice(0, 300)}`).join('\n');
+  const r = await timed('clasificar', () => jevChoose({ conversacion: recent, mensaje: text }, options, '¿Qué tema encaja con el último mensaje del usuario?', { tenantId: tenantOf(agent), purpose: 'clasificar' }));
+  if (!r || r.choice === 'ninguno') return undefined;
+  return topics[Number(r.choice.slice(1))];
+}
+
 async function matchByLlm(agent: AgentDef, topics: Topic[], text: string, history: ChatMessage[]): Promise<Topic | undefined> {
   // Sin ningún proveedor con clave (p. ej. todo pasa por Claude Code) solo se usan las frases disparadoras
-  if (!topics.length || !(await llmAvailable(tenantOf(agent)))) return undefined;
+  if (!topics.length) return undefined;
+  if (jevConfigured()) {
+    try { return await matchByJev(agent, topics, text, history); }
+    catch (err) { console.warn('[jev] elegir tema:', (err as Error).message); }
+  }
+  if (!(await llmAvailable(tenantOf(agent)))) return undefined;
   const list = topics
     .map((t, i) => `${i + 1}. ${t.name}: ${t.description ?? ''} Ejemplos: ${(t.triggers ?? []).slice(0, 6).join(' | ')}`)
     .join('\n');
@@ -169,6 +187,17 @@ async function generate(agent: AgentDef, session: Session, userText: string, ext
     const reply = await timed('claude-code', () => claudeCodeSend(agent, session, prompt));
     return { text: reply.text, sources: ['Claude Code'] };
   }
+  // Modo orquestado: Jev decide si es una tarea compleja (→ Claude Code); si no,
+  // responde el orquestador (Qwen/DeepSeek), que aún puede delegar en Claude Code
+  const orchestrated = useOrchestrator();
+  if (orchestrated && (await routeMessage(agent, session, userText)) === 'claude') {
+    const prompt = extraPrompt ? `${userText}\n\n[Contexto del flujo: ${render(extraPrompt, session.variables)}]` : userText;
+    try {
+      return { text: await runClaudeCode(agent, session, prompt), sources: ['Claude Code'] };
+    } catch (err) {
+      console.warn('[orquestador] Claude Code falló, responde el orquestador:', (err as Error).message);
+    }
+  }
   const dir = agentDir(tenantOf(agent), agent.id);
   setRoute('generativa');
   const hits = useKnowledge ? await timed('conocimiento', () => search(agent, dir, userText)) : [];
@@ -180,8 +209,9 @@ async function generate(agent: AgentDef, session: Session, userText: string, ext
   const vars = Object.keys(session.variables).length ? `\n\n# Datos de la conversación\n${JSON.stringify(session.variables)}` : '';
   const system: ChatMessage = {
     role: 'system',
-    content: `${agent.instructions}${extraPrompt ? `\n\n# Tarea actual\n${render(extraPrompt, session.variables)}` : ''}${knowledge}${vars}\n\nResponde en ${await replyLanguage(agent)}. Sé conciso.`,
+    content: `${agent.instructions}${extraPrompt ? `\n\n# Tarea actual\n${render(extraPrompt, session.variables)}` : ''}${knowledge}${vars}\n\nResponde en ${await replyLanguage(agent)}. Sé conciso.${orchestrated ? `\n\nSi la petición necesita varios pasos, investigar, analizar mucho texto, cálculos o código, usa la herramienta ${DELEGATE_TOOL} y entrega su respuesta al usuario sin rehacerla.` : ''}`,
   };
+  const delegate = orchestrated ? delegateTool(agent, session) : null;
   // Herramientas: acciones HTTP del agente + herramientas de sus servidores MCP
   const mcp = new Map<string, { server: NonNullable<AgentDef['mcpServers']>[number]; tool: string }>();
   const mcpSpecs: ToolSpec[] = [];
@@ -199,13 +229,14 @@ async function generate(agent: AgentDef, session: Session, userText: string, ext
   // Herramientas de los módulos de negocio: solo las de módulos activos y configurados
   const featureSpecs = await featureToolsFor(tenantOf(agent));
   const featureNames = new Set(featureSpecs.map((t) => t.function.name));
-  const tools = [...actionTools(agent.actions).filter((t) => !isFeatureTool(t.function.name)), ...mcpSpecs, ...featureSpecs];
+  const tools = [...actionTools(agent.actions).filter((t) => !isFeatureTool(t.function.name)), ...mcpSpecs, ...featureSpecs, ...(delegate ? [delegate.spec] : [])];
+  let delegatedSources = false;
   const messages: ChatMessage[] = [system, ...session.history.slice(-MAX_HISTORY)];
 
   for (let i = 0; i < 5; i++) {
     const res = await chat(messages, { model: agent.model, temperature: agent.temperature, tools, tenantId: tenantOf(agent), purpose: 'answer' });
     if (!res.tool_calls?.length) {
-      return { text: res.content ?? '', sources: [...new Set(hits.map((h) => h.source))] };
+      return { text: res.content ?? '', sources: [...new Set([...hits.map((h) => h.source), ...(delegatedSources ? ['Claude Code'] : [])])] };
     }
     messages.push({ role: 'assistant', content: res.content, tool_calls: res.tool_calls });
     for (const call of res.tool_calls) {
@@ -217,6 +248,11 @@ async function generate(agent: AgentDef, session: Session, userText: string, ext
       const viaMcp = mcp.get(call.function.name);
       // Una herramienta de módulo se ejecuta (o se rechaza y audita) siempre por su módulo,
       // aunque el modelo la invente sin que estuviera en la lista
+      if (delegate && call.function.name === DELEGATE_TOOL) {
+        delegatedSources = true;
+        messages.push({ role: 'tool', tool_call_id: call.id, content: await delegate.run(args) });
+        continue;
+      }
       const out = isFeatureTool(call.function.name) || featureNames.has(call.function.name)
         ? await timed('modulo', () => runFeatureTool({ tenantId: tenantOf(agent), agentId: agent.id, sessionId: session.id, name: call.function.name, args }))
         : viaMcp

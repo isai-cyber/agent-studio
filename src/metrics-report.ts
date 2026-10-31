@@ -21,11 +21,13 @@ export const STEP_LABELS: Record<string, string> = {
   accion: 'Acciones / herramientas',
   mcp: 'Servidores MCP',
   'claude-code': 'Claude Code',
+  jev: 'Jev (decidir)',
+  'modelo-rapido': 'Modelo rápido',
   nanoclaw: 'NanoClaw (antiguo)',
   voz: 'Voz (ElevenLabs)',
   motor: 'Motor y red',
 };
-const STEP_ORDER = ['clasificar', 'conocimiento', 'llm', 'accion', 'mcp', 'modulo', 'claude-code', 'nanoclaw', 'motor', 'voz'];
+const STEP_ORDER = ['jev', 'clasificar', 'conocimiento', 'llm', 'accion', 'mcp', 'modulo', 'claude-code', 'modelo-rapido', 'nanoclaw', 'motor', 'voz'];
 
 const SYSTEM_TOPICS = /^(saludo|greeting|goodbye|thank you|start over|reset conversation|end of conversation)$/i;
 const ESCALATION = /escal|humano|persona|human|agent/i;
