@@ -242,7 +242,8 @@ const EXACT = {
   'Esta plantilla no tiene campos editables.': 'This template has no editable fields.', 'Plantillas web': 'Website templates', 'Importar ejemplos': 'Import examples', 'Nueva plantilla': 'New template',
   'Campos': 'Fields', 'Activa': 'Active', 'Oculta': 'Hidden', 'Campos que el cliente puede editar': 'Fields the customer can edit', '+ Añadir campo': '+ Add field', 'Guardar plantilla': 'Save template',
   'Disponible para los clientes': 'Available to customers', 'Marketplace de las webs': 'Website marketplace', 'Tu comisión por venta (%)': 'Your fee per sale (%)', 'Guardar marketplace': 'Save marketplace',
-  'Mi web y tienda ': 'My website and store', 'Superadmin: empresas, planes y plantillas': 'Superadmin: companies, plans and templates',
+  'Mi web y tienda ': 'My website and store', 'Tipo de negocio': 'Business type', 'Para quién': 'For whom', 'Para qué clientes': 'For which customers', 'Todos los planes': 'All plans', 'Todos los negocios': 'All businesses',
+  'Tipos de negocio (separados por coma)': 'Business types (comma-separated)', 'Tipo de negocio (restaurante, tienda…)': 'Business type (restaurant, store…)', 'Superadmin: empresas, planes y plantillas': 'Superadmin: companies, plans and templates',
   'Tarjetas de crédito y débito. Stripe te pedirá tus datos y tu cuenta bancaria.': 'Credit and debit cards. Stripe will ask for your details and bank account.',
   'Tarjetas, saldo de Mercado Pago, OXXO y más. Inicia sesión con tu cuenta de Mercado Pago y autoriza.': 'Cards, Mercado Pago balance, OXXO and more. Sign in with your Mercado Pago account and authorize.',
   'El administrador de la plataforma aún no lo ha habilitado.': "The platform administrator hasn't enabled it yet.",
@@ -258,7 +259,7 @@ const PREFIX = [
   ['No tienes permiso para esto ', "You don't have permission for this "], ['Modelos: ', 'Models: '], ['Límite: ', 'Limit: '], ['Actualizado ', 'Updated '], ['Clonar «', 'Clone "'],
   ['¿Eliminar "', 'Delete "'], ['¿Desconectar ', 'Disconnect '], ['¿Desinstalar el módulo "', 'Uninstall the module "'], ['Micrófono: ', 'Microphone: '], ['No hay acceso al micrófono: ', 'No microphone access: '],
   ['Voz: ', 'Voice: '], ['Backend: directo', 'Backend: direct'], ['Clasificar: ', 'Classify: '], ['Proveedores: ', 'Providers: '], ['Voz ElevenLabs: ', 'ElevenLabs voice: '],
-  ['🛟 Modo soporte en ', '🛟 Support mode in '], ['Sus webhooks: ', 'Its webhooks: '], ['Para activar ', 'To enable '], ['Estos módulos dependen de ', 'These modules depend on '],
+  ['🛟 Modo soporte en ', '🛟 Support mode in '], ['Planes: ', 'Plans: '], ['Negocios: ', 'Businesses: '], ['Sus webhooks: ', 'Its webhooks: '], ['Para activar ', 'To enable '], ['Estos módulos dependen de ', 'These modules depend on '],
 ];
 
 // Frases con partes variables en medio

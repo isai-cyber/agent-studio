@@ -213,8 +213,8 @@ export function registerAdminRoutes(): void {
     })));
   });
   route('POST', '/api/platform/tenants', { platform: true }, async (req, res, _p, ctx) => {
-    const body = await json<{ name?: string; slug?: string; planId?: number; country?: string; ownerEmail?: string; language?: string; billingProvider?: string; billingEmail?: string }>(req);
-    const t = await createTenant({ name: String(body.name ?? ''), slug: body.slug || undefined, planId: Number(body.planId), country: body.country || null, language: body.language || 'es', billingProvider: body.billingProvider || null, billingEmail: body.billingEmail || body.ownerEmail || null });
+    const body = await json<{ name?: string; slug?: string; planId?: number; country?: string; ownerEmail?: string; language?: string; billingProvider?: string; billingEmail?: string; businessType?: string }>(req);
+    const t = await createTenant({ name: String(body.name ?? ''), slug: body.slug || undefined, planId: Number(body.planId), country: body.country || null, language: body.language || 'es', billingProvider: body.billingProvider || null, billingEmail: body.billingEmail || body.ownerEmail || null, businessType: body.businessType || null });
     await audit({ tenantId: null, ...actorOf(ctx), action: 'tenant.created', target: `tenant:${t.id}`, after: t });
     await audit({ tenantId: t.id, ...actorOf(ctx), action: 'tenant.created', target: `tenant:${t.id}`, after: t });
     let invitation: unknown = null;
@@ -226,7 +226,7 @@ export function registerAdminRoutes(): void {
     send(res, 201, { tenant: t, invitation });
   });
   route('PUT', '/api/platform/tenants/:id', { platform: true }, async (req, res, [id], ctx) => {
-    const body = await json<{ name?: string; planId?: number; status?: 'active' | 'suspended' | 'deleted'; country?: string | null; language?: 'es' | 'en'; billingProvider?: 'stripe' | 'mercadopago' | null; billingEmail?: string | null }>(req);
+    const body = await json<{ name?: string; planId?: number; status?: 'active' | 'suspended' | 'deleted'; country?: string | null; language?: 'es' | 'en'; billingProvider?: 'stripe' | 'mercadopago' | null; billingEmail?: string | null; businessType?: string | null }>(req);
     const r = await updateTenant(Number(id), body);
     invalidatePermissions(Number(id));
     const action = body.status && body.status !== r.before.status ? (body.status === 'suspended' ? 'tenant.suspended' : body.status === 'active' ? 'tenant.reactivated' : 'tenant.deleted') : 'tenant.updated';

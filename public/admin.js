@@ -15,6 +15,8 @@ const CHARGE_STATUS = { pending: ['Pendiente', 'warn'], paid: ['Pagado', 'ok'], 
 const fmtDate = (d) => (d ? new Date(d).toLocaleString(document.documentElement.lang === 'en' ? 'en' : 'es', { dateStyle: 'short', timeStyle: 'short' }) : '—');
 
 let api, post, afterSupport;
+// Tipos de negocio ya usados (para sugerirlos al escribir)
+const bizTypes = (tenants, extra = []) => [...new Set([...tenants.map((t) => t.businessType), ...extra].filter(Boolean))].sort();
 let tab = 'tenants';
 
 export function initPlatform(apiFn, postFn, onSupport) {
@@ -54,16 +56,19 @@ async function renderTenants(body) {
         <select name="planId" class="sel-input">${planOpts(plans[0]?.id)}</select>
         <input name="country" placeholder="País (MX, ES…)" maxlength="2" />
         <input name="ownerEmail" type="email" placeholder="Email del propietario (se le invita)" />
+        <input name="businessType" list="biz-types" maxlength="40" placeholder="Tipo de negocio (restaurante, tienda…)" />
         <select name="language" class="sel-input" aria-label="Idioma">${LANG_OPTS('es')}</select>
         <select name="billingProvider" class="sel-input" aria-label="Forma de cobro">${BILLING_OPTS('')}</select>
         <button class="primary" type="submit">Crear empresa</button>
       </form>
       <div id="t-result"></div>
     </details>
-    <div class="tbl wide"><table><thead><tr><th>Empresa</th><th>Plan</th><th>Idioma</th><th>Cobro</th><th>Estado</th><th>Usuarios</th><th>Agentes</th><th>Conversaciones (mes)</th><th>Coste IA</th><th>Cobro estimado</th><th></th></tr></thead><tbody>
+    <datalist id="biz-types">${bizTypes(tenants).map((b) => `<option value="${esc(b)}">`).join('')}</datalist>
+    <div class="tbl wide"><table><thead><tr><th>Empresa</th><th>Plan</th><th>Tipo de negocio</th><th>Idioma</th><th>Cobro</th><th>Estado</th><th>Usuarios</th><th>Agentes</th><th>Conversaciones (mes)</th><th>Coste IA</th><th>Cobro estimado</th><th></th></tr></thead><tbody>
       ${tenants.map((t) => `<tr>
         <td><b>${esc(t.name)}</b><br><span class="muted small">${esc(t.slug)}${t.country ? ` · ${esc(t.country)}` : ''}</span></td>
         <td><select class="sel-input" data-plan-of="${t.id}">${planOpts(t.planId)}</select></td>
+        <td><input data-biz-of="${t.id}" list="biz-types" maxlength="40" value="${esc(t.businessType ?? '')}" placeholder="—" style="max-width:150px" /></td>
         <td><select class="sel-input" data-lang-of="${t.id}">${LANG_OPTS(t.language)}</select></td>
         <td><select class="sel-input" data-billing-of="${t.id}">${BILLING_OPTS(t.billingProvider ?? '')}</select></td>
         <td><span class="feat-status ${STATUS[t.status][1]}">${STATUS[t.status][0]}</span></td>
@@ -93,6 +98,7 @@ async function renderTenants(body) {
   const act = async (fn) => { try { await fn(); } catch (err) { alert(err.message); } renderTenants(body); };
   $$('[data-plan-of]', body).forEach((s) => (s.onchange = () => act(() => api(`/api/platform/tenants/${s.dataset.planOf}`, json('PUT', { planId: Number(s.value) })))));
   $$('[data-lang-of]', body).forEach((s) => (s.onchange = () => act(() => api(`/api/platform/tenants/${s.dataset.langOf}`, json('PUT', { language: s.value })))));
+  $$('[data-biz-of]', body).forEach((s) => (s.onchange = () => act(() => api(`/api/platform/tenants/${s.dataset.bizOf}`, json('PUT', { businessType: s.value.trim() || null })))));
   $$('[data-billing-of]', body).forEach((s) => (s.onchange = () => act(() => api(`/api/platform/tenants/${s.dataset.billingOf}`, json('PUT', { billingProvider: s.value || null })))));
   $$('[data-charges]', body).forEach((b) => (b.onclick = () => renderCharges($('#charges-panel'), Number(b.dataset.charges), b.dataset.name, Number(b.dataset.amount))));
   $$('[data-status]', body).forEach((b) => (b.onclick = () => {
@@ -291,29 +297,33 @@ async function renderSettings(body) {
 const FIELD_TYPES = [['text', 'Texto'], ['textarea', 'Texto largo'], ['image', 'Imagen'], ['url', 'Enlace'], ['color', 'Color']];
 
 async function renderTemplates(body) {
-  const list = await api('/api/platform/site-templates');
+  const [list, { plans }, tenants] = await Promise.all([api('/api/platform/site-templates'), api('/api/platform/plans'), api('/api/platform/tenants')]);
+  const planName = (id) => plans.find((p) => p.id === id)?.name ?? `#${id}`;
+  const audience = (t) => `${t.plans.length ? `Planes: ${t.plans.map((id) => esc(planName(id))).join(', ')}` : 'Todos los planes'}<br><small class="muted">${t.businessTypes.length ? `Negocios: ${t.businessTypes.map(esc).join(', ')}` : 'Todos los negocios'}</small>`;
+  const ctxData = { plans, types: bizTypes(tenants, list.flatMap((t) => t.businessTypes)) };
   body.innerHTML = `
     <div class="card pad">
       <div class="row" style="justify-content:space-between;margin:0"><h3 style="margin:0">Plantillas web</h3>
         <span><button class="ghost" id="tpl-examples">Importar ejemplos</button> <button class="primary" id="tpl-new">Nueva plantilla</button></span></div>
-      <p class="muted small">Tus clientes eligen una plantilla activa y solo editan los campos que declares. Marcadores: <code>{{clave}}</code> de cada campo, <code>{{empresa}}</code>, <code>{{#productos}}…{{/productos}}</code> con <code>{{nombre}} {{descripcion}} {{precio}} {{imagen}} {{comprar}}</code>, y <code>{{carrito}}</code>. El carrito y el pago los añade la plataforma.</p>
-      <div class="tbl wide"><table><thead><tr><th>Nombre</th><th>Campos</th><th>Estado</th><th></th></tr></thead><tbody>
+      <p class="muted small">Tus clientes solo ven las plantillas activas dirigidas a su plan y a su tipo de negocio (lo pones en Empresas); cada uno elige la suya y su web es solo suya. Solo editan los campos que declares. Marcadores: <code>{{clave}}</code> de cada campo, <code>{{empresa}}</code>, <code>{{#productos}}…{{/productos}}</code> con <code>{{nombre}} {{descripcion}} {{precio}} {{imagen}} {{comprar}}</code>, y <code>{{carrito}}</code>. El carrito y el pago los añade la plataforma.</p>
+      <div class="tbl wide"><table><thead><tr><th>Nombre</th><th>Para quién</th><th>Campos</th><th>Estado</th><th></th></tr></thead><tbody>
       ${list.map((t) => `<tr><td><b>${esc(t.name)}</b><br><small class="muted">${esc(t.description ?? '')}</small>${t.undeclared.length ? `<br><small class="feat-status warn">Sin declarar: ${t.undeclared.map(esc).join(', ')}</small>` : ''}</td>
+        <td>${audience(t)}</td>
         <td>${t.fields.map((f) => esc(f.label)).join(', ') || '—'}</td>
         <td><span class="feat-status ${t.active ? 'ok' : 'off'}">${t.active ? 'Activa' : 'Oculta'}</span></td>
-        <td class="row" style="margin:0"><a class="ghost link-btn" href="/api/platform/site-templates/${t.id}/preview" target="_blank" rel="noopener">Vista previa</a><button class="ghost" data-tpl-edit="${t.id}">Editar</button></td></tr>`).join('') || '<tr><td colspan="4" class="muted">Aún no hay plantillas. Pulsa «Importar ejemplos» o «Nueva plantilla».</td></tr>'}
+        <td class="row" style="margin:0"><a class="ghost link-btn" href="/api/platform/site-templates/${t.id}/preview" target="_blank" rel="noopener">Vista previa</a><button class="ghost" data-tpl-edit="${t.id}">Editar</button></td></tr>`).join('') || '<tr><td colspan="5" class="muted">Aún no hay plantillas. Pulsa «Importar ejemplos» o «Nueva plantilla».</td></tr>'}
       </tbody></table></div>
     </div>
     <div id="tpl-editor"></div>`;
-  $('#tpl-new').onclick = () => templateEditor(body, null);
-  $$('[data-tpl-edit]', body).forEach((b) => (b.onclick = () => templateEditor(body, list.find((t) => t.id === Number(b.dataset.tplEdit)))));
+  $('#tpl-new').onclick = () => templateEditor(body, null, ctxData);
+  $$('[data-tpl-edit]', body).forEach((b) => (b.onclick = () => templateEditor(body, list.find((t) => t.id === Number(b.dataset.tplEdit)), ctxData)));
   $('#tpl-examples').onclick = async () => {
     try { const r = await post('/api/platform/site-templates/examples'); await renderTemplates(body); alert(r.added.length ? `Importadas: ${r.added.join(', ')}` : 'Los ejemplos ya estaban importados.'); }
     catch (err) { alert(err.message); }
   };
 }
 
-function templateEditor(body, t) {
+function templateEditor(body, t, { plans, types }) {
   const el = $('#tpl-editor');
   let fields = structuredClone(t?.fields ?? []);
   const fieldRows = () => fields.map((f, i) => `<div class="row tpl-field" data-i="${i}" style="margin:4px 0">
@@ -331,6 +341,10 @@ function templateEditor(body, t) {
         <label class="cfg-field"><span>Descripción</span><input id="tpl-desc" maxlength="500" value="${esc(t?.description ?? '')}" /></label>
       </div>
       <label class="switch"><input type="checkbox" id="tpl-active" ${t?.active === false ? '' : 'checked'} /><span></span>Disponible para los clientes</label>
+      <h4>Para qué clientes</h4>
+      <p class="muted small">Sin marcar ningún plan = todos los planes. Sin tipos de negocio = todos los negocios. Las empresas que ya la usan la conservan aunque cambies esto.</p>
+      <div class="row" style="flex-wrap:wrap;margin:0">${plans.map((p) => `<label class="switch"><input type="checkbox" data-tpl-plan="${p.id}" ${t?.plans?.includes(p.id) ? 'checked' : ''} /><span></span>${esc(p.name)}</label>`).join('')}</div>
+      <div class="cfg-field"><label for="tpl-biz">Tipos de negocio (separados por coma)</label><input id="tpl-biz" value="${esc((t?.businessTypes ?? []).join(', '))}" placeholder="${esc(types.slice(0, 3).join(', ') || 'restaurante, tienda de ropa')}" /></div>
       <h4>Campos que el cliente puede editar</h4>
       <div id="tpl-fields">${fieldRows()}</div>
       <button class="ghost" id="tpl-add-field">+ Añadir campo</button>
@@ -345,7 +359,11 @@ function templateEditor(body, t) {
     $('#tpl-cancel').onclick = () => { el.innerHTML = ''; };
     $('#tpl-save').onclick = async () => {
       read();
-      const data = { name: $('#tpl-name').value, description: $('#tpl-desc').value, html: $('#tpl-html').value, active: $('#tpl-active').checked, fields: fields.filter((f) => f.key) };
+      const data = {
+        name: $('#tpl-name').value, description: $('#tpl-desc').value, html: $('#tpl-html').value, active: $('#tpl-active').checked, fields: fields.filter((f) => f.key),
+        plans: $$('[data-tpl-plan]', el).filter((c) => c.checked).map((c) => Number(c.dataset.tplPlan)),
+        businessTypes: $('#tpl-biz').value.split(',').map((x) => x.trim()).filter(Boolean),
+      };
       try {
         await api(t ? `/api/platform/site-templates/${t.id}` : '/api/platform/site-templates', json(t ? 'PUT' : 'POST', data));
         await renderTemplates(body);
@@ -354,9 +372,10 @@ function templateEditor(body, t) {
   };
   // Al redibujar los campos se conserva lo escrito en nombre/HTML
   const keep = (fn) => {
-    const v = { name: $('#tpl-name').value, desc: $('#tpl-desc').value, html: $('#tpl-html').value, active: $('#tpl-active').checked };
+    const v = { name: $('#tpl-name').value, desc: $('#tpl-desc').value, html: $('#tpl-html').value, active: $('#tpl-active').checked, biz: $('#tpl-biz').value, plans: $$('[data-tpl-plan]', el).filter((c) => c.checked).map((c) => c.dataset.tplPlan) };
     fn();
-    $('#tpl-name').value = v.name; $('#tpl-desc').value = v.desc; $('#tpl-html').value = v.html; $('#tpl-active').checked = v.active;
+    $('#tpl-name').value = v.name; $('#tpl-desc').value = v.desc; $('#tpl-html').value = v.html; $('#tpl-active').checked = v.active; $('#tpl-biz').value = v.biz;
+    $$('[data-tpl-plan]', el).forEach((c) => { c.checked = v.plans.includes(c.dataset.tplPlan); });
   };
   draw();
   el.scrollIntoView({ behavior: 'smooth' });

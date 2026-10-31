@@ -3,14 +3,35 @@
 import { db, parseJson } from '../db/pool.ts';
 import { tenantDb } from '../db/tenant-db.ts';
 import { validateFields, cleanValue, safeUrl, type TemplateField } from './render.ts';
+import { getTenant, listPlans, checkBusinessType, type Tenant } from '../tenancy/tenants.ts';
 
 const fail = (status: number, message: string) => Object.assign(new Error(message), { status });
 
 // ---------- plantillas (superadmin) ----------
 
-export interface SiteTemplate { id: number; name: string; description: string | null; html: string; fields: TemplateField[]; active: boolean; updatedAt: string }
+// plans / businessTypes: a qué clientes va dirigida. Lista vacía = a todos.
+export interface SiteTemplate {
+  id: number; name: string; description: string | null; html: string; fields: TemplateField[]; active: boolean; updatedAt: string;
+  plans: number[]; businessTypes: string[];
+}
 
-const toTemplate = (r: any): SiteTemplate => ({ id: r.id, name: r.name, description: r.description, html: r.html, fields: parseJson<TemplateField[]>(r.fields, []), active: Boolean(r.active), updatedAt: new Date(r.updated_at).toISOString() });
+const toTemplate = (r: any): SiteTemplate => ({
+  id: r.id, name: r.name, description: r.description, html: r.html, fields: parseJson<TemplateField[]>(r.fields, []), active: Boolean(r.active), updatedAt: new Date(r.updated_at).toISOString(),
+  plans: parseJson<number[]>(r.plans, []), businessTypes: parseJson<string[]>(r.business_types, []),
+});
+
+// ¿Puede esta empresa elegir la plantilla? (activa, y su plan y tipo de negocio están en el público)
+export function templateAllowed(t: SiteTemplate, tenant: Pick<Tenant, 'planId' | 'businessType'>): boolean {
+  if (!t.active) return false;
+  if (t.plans.length && !t.plans.includes(tenant.planId)) return false;
+  if (t.businessTypes.length && !(tenant.businessType && t.businessTypes.includes(tenant.businessType))) return false;
+  return true;
+}
+
+export async function templatesForTenant(tenantId: number): Promise<SiteTemplate[]> {
+  const tenant = await getTenant(tenantId);
+  return tenant ? (await listTemplates(true)).filter((t) => templateAllowed(t, tenant)) : [];
+}
 
 export async function listTemplates(onlyActive = false): Promise<SiteTemplate[]> {
   return (await db().query(`SELECT * FROM site_templates ${onlyActive ? 'WHERE active = 1' : ''} ORDER BY id`)).map(toTemplate);
@@ -22,19 +43,24 @@ export async function getTemplate(id: number): Promise<SiteTemplate> {
   return toTemplate(rows[0]);
 }
 
-export async function saveTemplate(input: { id?: number; name?: string; description?: string; html?: string; fields?: unknown; active?: boolean }): Promise<SiteTemplate> {
+export async function saveTemplate(input: { id?: number; name?: string; description?: string; html?: string; fields?: unknown; active?: boolean; plans?: unknown; businessTypes?: unknown }): Promise<SiteTemplate> {
   const name = String(input.name ?? '').trim();
   const html = String(input.html ?? '');
   if (!name || name.length > 120) throw fail(400, 'Ponle un nombre a la plantilla (máximo 120 caracteres).');
   if (!html.trim() || html.length > 2_000_000) throw fail(400, 'Pega el HTML de la plantilla (máximo 2 MB).');
   const fields = validateFields(input.fields ?? []);
-  const vals = [name, String(input.description ?? '').slice(0, 500) || null, html, JSON.stringify(fields), input.active === false ? 0 : 1];
+  if (!Array.isArray(input.plans ?? []) || !Array.isArray(input.businessTypes ?? [])) throw fail(400, 'Planes y tipos de negocio deben ser listas');
+  const known = new Set((await listPlans()).map((p) => p.id));
+  const plans = [...new Set(((input.plans ?? []) as unknown[]).map(Number))];
+  if (plans.some((p) => !known.has(p))) throw fail(400, 'Uno de los planes no existe');
+  const businessTypes = [...new Set(((input.businessTypes ?? []) as unknown[]).map(checkBusinessType).filter((b): b is string => Boolean(b)))];
+  const vals = [name, String(input.description ?? '').slice(0, 500) || null, html, JSON.stringify(fields), input.active === false ? 0 : 1, JSON.stringify(plans), JSON.stringify(businessTypes)];
   if (input.id) {
     await getTemplate(input.id);
-    await db().query('UPDATE site_templates SET name = ?, description = ?, html = ?, fields = ?, active = ? WHERE id = ?', [...vals, Number(input.id)]);
+    await db().query('UPDATE site_templates SET name = ?, description = ?, html = ?, fields = ?, active = ?, plans = ?, business_types = ? WHERE id = ?', [...vals, Number(input.id)]);
     return getTemplate(input.id);
   }
-  const r = await db().query('INSERT INTO site_templates (name, description, html, fields, active) VALUES (?, ?, ?, ?, ?)', vals);
+  const r = await db().query('INSERT INTO site_templates (name, description, html, fields, active, plans, business_types) VALUES (?, ?, ?, ?, ?, ?, ?)', vals);
   return getTemplate(r.insertId);
 }
 
@@ -54,10 +80,13 @@ const DOMAIN = /^(?=.{4,190}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$/
 export async function saveSite(tenantId: number, patch: { templateId?: number | null; content?: Record<string, unknown>; published?: boolean; customDomain?: string | null; currency?: string; paymentProvider?: string | null }): Promise<Site> {
   const cur = await getSite(tenantId);
   const next = { ...cur };
-  if (patch.templateId !== undefined) {
+  // Cambiar de plantilla solo a una dirigida a esta empresa. La que ya tiene la
+  // conserva aunque el superadmin cambie el público (no se rompe una web publicada).
+  if (patch.templateId !== undefined && patch.templateId !== cur.templateId) {
     if (patch.templateId !== null) {
       const t = await getTemplate(Number(patch.templateId));
-      if (!t.active) throw fail(400, 'Esa plantilla no está disponible');
+      const tenant = await getTenant(tenantId);
+      if (!tenant || !templateAllowed(t, tenant)) throw fail(400, 'Esa plantilla no está disponible para tu empresa');
     }
     next.templateId = patch.templateId === null ? null : Number(patch.templateId);
   }

@@ -307,6 +307,15 @@ export const MIGRATIONS: Migration[] = [
       await c.query("INSERT IGNORE INTO plan_features (plan_id, feature_key) SELECT id, 'web_store' FROM plans WHERE plan_key IN ('pro', 'empresa')");
     },
   },
+  {
+    version: 7,
+    name: 'tipo de negocio de cada empresa y público de cada plantilla web',
+    async up(c) {
+      await c.query('ALTER TABLE tenants ADD COLUMN IF NOT EXISTS business_type VARCHAR(40) NULL');
+      // Vacío o NULL = la plantilla vale para todos los planes / tipos de negocio
+      await c.query('ALTER TABLE site_templates ADD COLUMN IF NOT EXISTS plans JSON NULL, ADD COLUMN IF NOT EXISTS business_types JSON NULL');
+    },
+  },
 ];
 
 export interface MigrationReport { applied: { version: number; name: string; warning?: string }[]; current: number }

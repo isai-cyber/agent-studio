@@ -169,11 +169,44 @@ test('la empresa solo edita los campos declarados, arma su catálogo y publica',
   assert.match(prev.body, /<h1>Borrador<\/h1>/);
 });
 
+test('el superadmin decide qué plantillas ve cada tipo de cliente; cada empresa tiene su propia web', opts, async () => {
+  const plans = (await root.get('/api/platform/plans')).body.plans;
+  const empresa = plans.find((p: any) => p.key === 'empresa').id;
+  const resto = (await root.post('/api/platform/site-templates', { name: 'Restaurante', html: '<h1>{{titulo}}</h1>', fields: [{ key: 'titulo', label: 'T', type: 'text' }], businessTypes: ['Restaurante'] })).body;
+  assert.deepEqual(resto.businessTypes, ['restaurante']);
+  const top = (await root.post('/api/platform/site-templates', { name: 'Premium', html: '<h1>P</h1>', fields: [], plans: [empresa] })).body;
+  assert.equal((await root.post('/api/platform/site-templates', { name: 'Mala', html: '<p>x</p>', plans: [99999] })).status, 400);
+  const names = async (c: InstanceType<typeof Client>) => (await c.get('/api/web')).body.templates.map((t: any) => t.name);
+  // Ana (plan Pro, sin tipo de negocio) no ve ni puede elegir las dirigidas a otros
+  assert.ok(!(await names(owner)).includes('Restaurante'));
+  assert.ok(!(await names(owner)).includes('Premium'));
+  assert.equal((await owner.put('/api/web', { templateId: resto.id })).status, 400);
+  assert.equal((await owner.put('/api/web', { templateId: top.id })).status, 400);
+  assert.equal((await owner.req('POST', '/api/web/preview', { templateId: top.id })).status, 400);
+  // El superadmin la marca como restaurante: ahora sí la ve (Premium sigue siendo del plan Empresa)
+  assert.equal((await root.put(`/api/platform/tenants/${tenantId}`, { businessType: ' Restaurante ' })).body.businessType, 'restaurante');
+  assert.ok((await names(owner)).includes('Restaurante'));
+  assert.ok(!(await names(owner)).includes('Premium'));
+  // La otra empresa no la ve: cada una elige la suya y su web es independiente
+  const otherTenant = (await other.get('/api/me/context')).body.tenant.id;
+  assert.ok(!(await names(other)).includes('Restaurante'));
+  await root.put(`/api/platform/tenants/${otherTenant}`, { planId: empresa });
+  assert.ok((await names(other)).includes('Premium'));
+  assert.equal((await other.put('/api/web', { templateId: top.id })).status, 200);
+  assert.equal((await owner.get('/api/web')).body.site.templateId, templateId);
+  // Si el superadmin cambia el público, quien ya la usa la conserva y puede seguir editando
+  await root.put(`/api/platform/site-templates/${templateId}`, { name: 'Tienda', html: TEMPLATE, fields: FIELDS, businessTypes: ['ferreteria'] });
+  assert.ok((await names(owner)).includes('Tienda'));
+  assert.equal((await owner.put('/api/web', { templateId, content: { titulo: 'Mi tienda' } })).status, 200);
+  assert.ok(!(await names(other)).includes('Tienda'));
+  await root.put(`/api/platform/site-templates/${templateId}`, { name: 'Tienda', html: TEMPLATE, fields: FIELDS });
+  await root.put(`/api/platform/tenants/${otherTenant}`, { planId: plans.find((p: any) => p.key === 'pro').id });
+});
+
 test('aislamiento: otra empresa no ve ni toca el catálogo ni la web ajena', opts, async () => {
   assert.equal((await other.put(`/api/web/products/${products[0].id}`, { name: 'Hack', price: 1 })).status, 404);
   assert.equal((await other.del(`/api/web/products/${products[0].id}`)).status, 404);
   assert.deepEqual((await other.get('/api/web/products')).body, []);
-  assert.equal((await other.get('/api/web')).body.site.templateId, null);
   assert.equal((await buyer.get('/s/otra')).status, 404);
 });
 

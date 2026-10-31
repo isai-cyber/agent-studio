@@ -22,7 +22,7 @@ import { siteTenantByDomain } from '../tenancy/platform.ts';
 import { usableFeatures } from '../features/state.ts';
 import { getPlatformSettings } from '../platform-settings.ts';
 import { renderSite, undeclaredFields, esc } from './render.ts';
-import { listTemplates, getTemplate, saveTemplate, getSite, saveSite, listProducts, saveProduct, deleteProduct, listOrders } from './store.ts';
+import { listTemplates, templatesForTenant, templateAllowed, getTemplate, saveTemplate, getSite, saveSite, listProducts, saveProduct, deleteProduct, listOrders } from './store.ts';
 import {
   accountStatus, marketplaceStatus, stripeOnboardingLink, refreshStripeAccount, mercadopagoAuthUrl, mercadopagoCallback, mpRedirectUri,
   disconnectAccount, shopProvider, checkout, confirmOrder, mercadopagoPayment, verifyStripeSignature, type Provider,
@@ -52,7 +52,8 @@ export function registerSiteRoutes(): void {
     const template = site.templateId ? await getTemplate(site.templateId).catch(() => null) : null;
     send(res, 200, {
       site,
-      templates: (await listTemplates(true)).map(templateSummary),
+      // Las dirigidas a esta empresa, más la que ya usa (aunque el superadmin haya cambiado su público)
+      templates: [...(await templatesForTenant(ctx.tenantId)), ...(template ? [template] : [])].filter((t, i, a) => a.findIndex((x) => x.id === t.id) === i).map(templateSummary),
       template: template ? templateSummary(template) : null,
       url: `${platformUrl(req)}/s/${ctx.tenant.slug}`,
       domainTarget: process.env.PUBLIC_HOST ?? null, // a dónde debe apuntar el CNAME del dominio propio
@@ -78,7 +79,7 @@ export function registerSiteRoutes(): void {
     const id = Number(body.templateId ?? site.templateId);
     if (!id) return send(res, 400, { error: 'Elige una plantilla' });
     const t = await getTemplate(id);
-    if (!t.active) return send(res, 400, { error: 'Esa plantilla no está disponible' });
+    if (id !== site.templateId && !templateAllowed(t, ctx.tenant)) return send(res, 400, { error: 'Esa plantilla no está disponible para tu empresa' });
     const html = renderSite({
       html: t.html, fields: t.fields, content: body.content ?? site.content, tenantName: ctx.tenant.name,
       products: await listProducts(ctx.tenantId, true), currency: site.currency, language: ctx.tenant.language, shopBase: '', canBuy: false,
